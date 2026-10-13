@@ -2,6 +2,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useSystem } from '@ohif/core';
 import AnnotationTools from './AnnotationTools';
+import AnatomyPanel from './AnatomyPanel';
 import { ArrowLeft, Plus, Upload, FolderOpen, Save, Download, History, Loader2, X, AlertTriangle } from 'lucide-react';
 import { currentSource, createMask, importMasks, saveAll, loadSaved, exportLocal, isMaskDirty, copyGroup } from './masks';
 import GroupedSegmentationPanel from './GroupedSegmentationPanel';
@@ -135,6 +136,7 @@ export default function Panel() {
       <input ref={input} aria-label="导入 NIfTI mask" className="hidden" type="file" accept=".nii,.nii.gz" multiple onChange={e => { const files = Array.from(e.target.files || []); e.target.value = ''; run(async signal => { for (const file of files) await importMasks(servicesManager, file, signal); }); }} />
       <div className="mt-3 flex flex-wrap items-center justify-between gap-1 text-[14px] text-gray-400"><span>{source?.descriptor.sourceId ? '原图已保存' : '本地原图 · 未保存到服务器'}</span><span>{dirty ? `${dirty} 个目标未保存` : source?.masks.size ? '标注已保存' : '尚无标注'} · {Math.round(memorySnapshot().bytes / 1024 ** 2)} MiB</span></div>
       {!source?.descriptor.sourceId && <p className="mt-2 text-[14px] text-gray-500">保存或启动 AI 时上传原图。</p>}
+      {source?.annotationCase && <AnatomyPanel source={source} />}
       {source?.descriptor.sourceId && <a className="mt-2 block text-[14px] text-primary" aria-label="原图访问链接" href={`/nifti?sourceId=${source.descriptor.sourceId}`} target="_blank" rel="noreferrer">原图访问链接</a>}
       {busy && <div className="mt-2 flex items-center gap-2 text-[14px] text-primary"><Loader2 size={15} className="animate-spin" />处理中<Action label="取消" icon={X} disabled={false} onClick={() => task.current?.abort()} /></div>}
       {!historyOpen && message && <p role="status" className="mt-2 text-[14px] text-primary">{message}</p>}

@@ -6,6 +6,7 @@ import { parseInWorker, alignInWorker } from './workerClient';
 import { ensureStored, request, upload, downloadMask } from './api';
 import { transformPoint } from './format.mjs';
 import { initialMaskColor, validColor } from './maskColors.mjs';
+import { annotationRoot, annotationRequest, installAnnotationContext } from './annotationClient';
 import { newGroup, importGroup, maskGroup, targetName } from './groups';
 
 export function currentSource(servicesManager) {
@@ -86,6 +87,7 @@ export function maskAppearance(servicesManager, mask) {
 }
 
 export function isMaskDirty(servicesManager, mask) {
+  if (mask.anatomyReadOnly || mask.saved?.anatomyReadOnly) return false;
   return mask.revision !== mask.savedRevision || (!!mask.saved &&
     JSON.stringify(maskAppearance(servicesManager, mask)) !== JSON.stringify(mask.saved.displayColor || mask.displayColor));
 }
@@ -203,6 +205,12 @@ export async function importMasks(servicesManager, file: File, signal?, saved?, 
       mask.originalFile = saved?.originalFile ?? file.name;
       mask.alignment = saved?.alignment ?? map;
       mask.derivedFrom = saved?.derivedFrom;
+      mask.entityId = saved?.entityId;
+      mask.annotationCaseId = saved?.annotationCaseId;
+      if (saved?.anatomyReadOnly) {
+        mask.anatomyReadOnly = true;
+        servicesManager.services.segmentationService.setSegmentLocked(id, 1, true);
+      }
       if (saved) mask.savedRevision = mask.revision;
       created.push(id);
     }
@@ -218,6 +226,7 @@ export async function saveAll(servicesManager, signal?, progress?) {
   await ensureStored(source, signal, progress);
   const results = [];
   for (const [id, mask] of source.masks) {
+    if (mask.anatomyReadOnly || mask.saved?.anatomyReadOnly) continue;
     const displayColor = maskAppearance(servicesManager, mask);
     if (mask.saved && !isMaskDirty(servicesManager, mask) && mask.saved.displayColor) { results.push({ id, success: true }); continue; }
     const owner = source.sourceKey + ':save';
@@ -231,7 +240,39 @@ export async function saveAll(servicesManager, signal?, progress?) {
       form.append('provenance', JSON.stringify({ originalLabel: mask.originalLabel || 1, originalFile: mask.originalFile, alignment: mask.alignment, displayColor, derivedFrom: mask.derivedFrom, segmentationSet: maskGroup(source, mask) }));
       form.append('labelOnly', String(!pixels.some(x => x)));
       if (mask.saved) { form.append('maskId', mask.saved.maskId); form.append('expectedVersion', String(mask.saved.version)); }
-      const reply = await upload(`/${source.descriptor.sourceId}/masks`, form, signal);
+      let reply;
+      if (source.annotationCase) {
+        if ((mask.annotationCaseId || mask.saved?.annotationCaseId) && (mask.annotationCaseId || mask.saved?.annotationCaseId) !== source.annotationCase.caseId) throw Error('此目标属于另一个标注病例。');
+        if (!mask.entityId && !mask.saved?.entityId) {
+          mask.pendingEntity ||= { key: crypto.randomUUID(), payload: {
+            operation: 'entity', name: mask.label, findingIds: [], expectedCaseRevision: source.annotationCase.revision,
+          } };
+          const body = await annotationRequest(`/cases/${source.annotationCase.caseId}/operations`, mask.pendingEntity.payload, signal, mask.pendingEntity.key);
+          mask.pendingEntity = undefined;
+          installAnnotationContext(source, body);
+          mask.entityId = body.data.entities[body.data.entities.length - 1].id;
+          mask.annotationCaseId = body.caseId;
+          // A target created before opening the workbench becomes a new primary mask.
+          if (mask.saved) {
+            mask.derivedFrom = { maskId: mask.saved.maskId, version: mask.saved.version };
+            mask.saved = undefined; form.delete('maskId'); form.delete('expectedVersion');
+            form.set('provenance', JSON.stringify({ ...JSON.parse(String(form.get('provenance'))), derivedFrom: mask.derivedFrom }));
+          }
+        }
+        const entityId = mask.entityId || mask.saved.entityId;
+        form.append('expectedCaseRevision', String(source.annotationCase.revision));
+        form.append('expectedMaskVersion', String(mask.saved?.version || 0));
+        const requestKey = `${source.annotationCase.caseId}:${entityId}:${revision}:${mask.saved?.version || 0}:${JSON.stringify(displayColor)}`;
+        if (mask.pendingSave?.fingerprint !== requestKey) mask.pendingSave = { fingerprint: requestKey, key: crypto.randomUUID(), form };
+        const response = await fetch(annotationRoot() + `/cases/${source.annotationCase.caseId}/entities/${entityId}/mask-versions`, {
+          method: 'POST', credentials: 'same-origin', signal, headers: { 'Idempotency-Key': mask.pendingSave.key }, body: mask.pendingSave.form,
+        });
+        reply = await response.json();
+        if (!response.ok) { const error = new Error(reply.detail?.message || (typeof reply.detail === 'string' ? reply.detail : '病灶保存失败。')); Object.assign(error, { status: response.status }); throw error; }
+        const body = await annotationRequest(`/cases/${source.annotationCase.caseId}/context`, undefined, signal);
+        installAnnotationContext(source, body);
+        mask.pendingSave = undefined;
+      } else reply = await upload(`/${source.descriptor.sourceId}/masks`, form, signal);
       mask.saved = reply.items[0]; mask.savedRevision = revision;
       if (mask.saved.segmentationSet) mask.segmentationSet = mask.saved.segmentationSet;
       results.push({ id, success: true });
@@ -246,7 +287,11 @@ export async function loadSaved(servicesManager, signal?, maskIds?: string[], op
   if (!source.descriptor.sourceId) throw new Error('此原图尚未上传。');
   const all = options.items || (await (await request(`/${source.descriptor.sourceId}/masks`, { signal })).json()).items;
   assertActive(servicesManager, source, signal);
-  const items = all.filter(item => !maskIds || maskIds.includes(item.maskId));
+  const allowed = source.annotationCase ? new Set([
+    ...source.annotationCase.entities.map(e => e.maskId).filter(Boolean),
+    ...source.annotationCase.anatomyLayers.flatMap(layer => layer.maskIds),
+  ]) : null;
+  const items = all.filter(item => (!maskIds || maskIds.includes(item.maskId)) && (!allowed || allowed.has(item.maskId)));
   const results = [];
   for (let index = 0; index < items.length; index++) {
     const item = items[index];
@@ -259,12 +304,13 @@ export async function loadSaved(servicesManager, signal?, maskIds?: string[], op
       progress('下载中');
       const blob = await downloadMask(`/${source.descriptor.sourceId}/masks/${item.maskId}?version=${item.version}`, signal, progress);
       assertActive(servicesManager, source, signal);
-      const imported = options.asCopy ? { ...item, name: `${item.name} · v${item.version} 副本`, displayColor: undefined } : item;
+      if (options.asCopy && item.anatomyReadOnly) throw Error('结构辅助图层不能复制为人工标注。');
+      const imported = options.asCopy ? { ...item, entityId: undefined, annotationCaseId: undefined, name: `${item.name} · v${item.version} 副本`, displayColor: undefined } : item;
       const created = await importMasks(servicesManager, new File([blob], item.name + '.nii.gz'), signal, imported, progress);
       if (options.asCopy) for (const id of created) {
         const mask = source.masks.get(id);
         mask.derivedFrom = { maskId: item.maskId, version: item.version };
-        mask.saved = undefined; mask.savedRevision = -1;
+        mask.saved = undefined; mask.savedRevision = -1; mask.entityId = undefined; mask.annotationCaseId = undefined;
         // Keep the historical version immutable; the next save creates a new mask identity.
       }
       results.push({ item, status: 'loaded' });
@@ -305,6 +351,7 @@ export async function copyGroup(servicesManager, groupId, signal?) {
   const { source } = currentSource(servicesManager);
   const targets = [...source.masks.values()].filter(m => maskGroup(source, m).id === groupId);
   if (!targets.length) return;
+  if (targets.some(mask => mask.anatomyReadOnly || mask.saved?.anatomyReadOnly)) throw Error('结构辅助图层不能复制为人工标注。');
   if (targets.some(mask => !mask.saved || isMaskDirty(servicesManager, mask))) throw Error('复制方案前请先保存组内全部目标。');
   const group = newGroup(`${maskGroup(source, targets[0]).name} · 副本`, 'copy');
   const created = [];

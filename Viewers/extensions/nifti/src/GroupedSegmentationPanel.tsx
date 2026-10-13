@@ -81,6 +81,7 @@ export default function GroupedSegmentationPanel({ source, servicesManager, comm
     </div>}
     {groups.map(group => {
       const displayName = groupFindingName(group, row);
+      const anatomyGroup = group.masks.some(m => m.anatomyReadOnly || m.saved?.anatomyReadOnly);
       const state = groupPresentation(source, group.id);
       const dirty = group.masks.filter(m => isMaskDirty(servicesManager, m)).length;
       return <article key={group.id} data-group-id={group.id} aria-label={`分割组 ${displayName}`} className="seg-group">
@@ -94,6 +95,7 @@ export default function GroupedSegmentationPanel({ source, servicesManager, comm
           <div className="seg-group-opacity" title="整组透明度按比例影响各目标，不会覆盖单目标的设置。"><Range label="整体透明度" name={`整体透明度 ${group.name}`} value={Math.round(state.opacity * 100)} onChange={value => change(() => { state.opacity = value / 100; })} /></div>
           {group.masks.map(mask => {
             const title = targetName(mask), color = maskAppearance(servicesManager, mask), view = targetPresentation(mask);
+            const readOnly = mask.anatomyReadOnly || mask.saved?.anatomyReadOnly;
             const locked = segmentation.segmentLocking.isSegmentIndexLocked(mask.segmentationId, 1);
             return <div key={mask.segmentationId} data-target-id={mask.saved?.maskId || mask.segmentationId} aria-current={mask.segmentationId === activeId} className="seg-target">
               <div className="seg-target-heading">
@@ -102,7 +104,7 @@ export default function GroupedSegmentationPanel({ source, servicesManager, comm
                 {isMaskDirty(servicesManager, mask) && <span className="seg-dirty" role="img" aria-label="未保存修改" title="未保存修改" />}
                 {mask.saved && <span className="seg-version" title={`已保存版本 ${mask.saved.version}`}>v{mask.saved.version}</span>}
                 <IconAction label={`${mask.visible !== false ? '隐藏' : '显示'}目标 ${title}`} icon={mask.visible !== false ? Eye : EyeOff} onClick={() => change(() => { mask.visible = mask.visible === false; })} />
-                <IconAction label={`目标历史 ${title}`} icon={History} disabled={busy || !mask.saved} onClick={() => onHistory(mask.saved.maskId)} />
+                <IconAction label={`目标历史 ${title}`} icon={History} disabled={busy || readOnly || !mask.saved} onClick={() => onHistory(mask.saved.maskId)} />
                 <IconAction label={`显示设置 ${title}`} icon={SlidersHorizontal} pressed={view.expanded} onClick={() => execute(() => { const expanded = !view.expanded; for (const item of source.masks.values()) targetPresentation(item).expanded = false; view.expanded = expanded; })} />
               </div>
               {view.expanded && <div className="seg-controls" aria-label={`目标显示设置 ${title}`}>
@@ -111,15 +113,15 @@ export default function GroupedSegmentationPanel({ source, servicesManager, comm
                 <Range label="边界透明度" name={`边界透明度 ${title}`} value={Math.round(view.outlineOpacity * 100)} onChange={value => change(() => { view.outlineOpacity = value / 100; })} />
                 <Range label="边界宽度" name={`边界宽度 ${title}`} value={view.outlineWidth} max={10} step={0.5} unit=" px" onChange={value => change(() => { view.outlineWidth = value; })} />
                 <div className="seg-footer">
-                  <button type="button" className="seg-action" aria-label={`${locked ? '解锁' : '锁定'}目标 ${title}`} disabled={busy} onClick={() => execute(() => service.setSegmentLocked(mask.segmentationId, 1, !locked))} title={locked ? '解锁目标' : '锁定目标'}>{locked ? <Lock size={15} /> : <Unlock size={15} />}</button>
-                  <IconAction label={`重命名目标 ${title}`} icon={Pencil} disabled={busy} onClick={() => commandsManager.run('editSegmentLabel', { segmentationId: mask.segmentationId, segmentIndex: 1 })} />
+                  <button type="button" className="seg-action" aria-label={`${locked ? '解锁' : '锁定'}目标 ${title}`} disabled={busy || readOnly} onClick={() => execute(() => service.setSegmentLocked(mask.segmentationId, 1, !locked))} title={locked ? '解锁目标' : '锁定目标'}>{locked ? <Lock size={15} /> : <Unlock size={15} />}</button>
+                  <IconAction label={`重命名目标 ${title}`} icon={Pencil} disabled={busy || readOnly} onClick={() => commandsManager.run('editSegmentLabel', { segmentationId: mask.segmentationId, segmentIndex: 1 })} />
                   <IconAction label={`移除目标 ${title}`} icon={X} disabled={busy} onClick={() => execute(() => remove(mask))} />
                   <IconAction label={`重置显示 ${title}`} icon={RotateCcw} onClick={() => change(() => { delete mask.presentation; targetPresentation(mask).expanded = true; })} />
                 </div>
               </div>}
             </div>;
           })}
-          <div className="seg-footer"><button type="button" disabled={busy} className={smallButton} aria-label="组内新增" onClick={() => onAdd(group)}><Plus size={15} />新增</button><button type="button" disabled={busy || !!dirty} title={dirty ? '先保存组内目标，再复制方案' : '将当前已加载目标复制到新组'} className={smallButton} aria-label="复制为新方案" onClick={() => onCopy(group.id)}><Copy size={15} />复制</button></div>
+          <div className="seg-footer"><button type="button" disabled={busy || anatomyGroup} className={smallButton} aria-label="组内新增" onClick={() => onAdd(group)}><Plus size={15} />新增</button><button type="button" disabled={busy || !!dirty || anatomyGroup} title={dirty ? '先保存组内目标，再复制方案' : '将当前已加载目标复制到新组'} className={smallButton} aria-label="复制为新方案" onClick={() => onCopy(group.id)}><Copy size={15} />复制</button></div>
           <details className="seg-source"><summary>来源</summary><p>{group.sourceFile || (group.kind === 'legacy' ? '来源未能确认，单独保留分组。' : '在工作台中创建。')}</p></details>
         </>}
       </article>;

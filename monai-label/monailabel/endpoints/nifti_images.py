@@ -25,6 +25,7 @@ from fastapi import APIRouter, File, Form, HTTPException, Query, UploadFile
 from fastapi.responses import FileResponse, Response
 from starlette.background import BackgroundTask
 from pydantic import BaseModel, Field
+from monailabel.utils.others import annotation_domain
 from monailabel.utils.others.nifti_manifest import import_roots, resolve_image, parse_manifest
 from monailabel.utils.others.nifti_groups import ensure_groups, with_group, group_for, assign_group, validate_group, group_name
 from fastapi.responses import StreamingResponse
@@ -450,7 +451,14 @@ def mask_history(source_id: str, offset: int = Query(0, ge=0), limit: int = Quer
 @router.post('/{source_id}/masks')
 def save_masks(source_id: str, file: UploadFile = File(...), label: str = Form('Mask'),
                maskId: str = Form(None), expectedVersion: int = Form(0), raw: bool = Form(False),
-               labelOnly: bool = Form(False), geometryHash: str = Form(None), provenance: str = Form('{}')):
+               labelOnly: bool = Form(False), geometryHash: str = Form(None), provenance: str = Form('{}'),
+               annotationCaseId: str = Form(None), annotationEntityId: str = Form(None),
+               expectedCaseRevision: int = Form(None), annotationRequestKey: str = Form(None), anatomyCaseId: str = Form(None)):
+    # Internal callers must not mistake FastAPI Form defaults for real values.
+    if not isinstance(annotationCaseId, str): annotationCaseId = None
+    if not isinstance(annotationEntityId, str): annotationEntityId = None
+    if not isinstance(annotationRequestKey, str): annotationRequestKey = None
+    if not isinstance(anatomyCaseId, str): anatomyCaseId = None
     enabled()
     enabled('ENABLE_NIFTI_EDITING')
     source = get_source(source_id)
@@ -503,6 +511,35 @@ def save_masks(source_id: str, file: UploadFile = File(...), label: str = Form('
         try:
             with database() as db:
                 db.execute('BEGIN IMMEDIATE')
+                annotation_domain.schema(db)
+                digest = None
+                if annotationCaseId and annotationRequestKey:
+                    request_hash = hashlib.sha256(json.dumps([expectedCaseRevision, expectedVersion, label, provenance, labelOnly], ensure_ascii=False).encode())
+                    request_hash.update(memoryview(np.ascontiguousarray(data)))
+                    digest = request_hash.hexdigest()
+                if annotationCaseId and annotationRequestKey:
+                    prior_request = db.execute('SELECT digest,response FROM annotation_requests WHERE case_id=? AND key=?', (annotationCaseId, annotationRequestKey)).fetchone()
+                    if prior_request:
+                        if prior_request[0] != digest:
+                            annotation_domain.fail('IDEMPOTENCY_KEY_REUSED', '保存请求标识被用于不同内容。', 409)
+                        return json.loads(prior_request[1])
+                annotation_case = annotation_domain.validate_mask_write(db, source_id, maskId, annotationCaseId, annotationEntityId, expectedCaseRevision)
+                if annotation_case and len(values) != 1:
+                    annotation_domain.fail('BINARY_MASK_REQUIRED', '一个病灶只允许一份二值 mask。')
+                anatomy_case = annotation_domain.read(db, anatomyCaseId) if anatomyCaseId else None
+                anatomy_layer = None
+                if anatomy_case:
+                    if anatomy_case['sourceId'] != source_id or maskId:
+                        annotation_domain.fail('REFERENCE_CASE_MISMATCH', '结构图层 CT 不匹配。')
+                    labels = provenance_data.get('anatomyLabels', {})
+                    if any(str(int(v)) not in labels for v in values):
+                        annotation_domain.fail('INVALID_LABEL_MAP', '标签映射未覆盖文件中的所有非零值。')
+                    anatomy_layer = {'id': annotation_domain.identity(), 'name': 'TotalSegmentator 结构', 'maskIds': [], 'labelMap': labels,
+                                     'modelVersion': provenance_data.get('modelVersion', 'unknown'), 'geometryHash': source['geometryHash']}
+                if maskId:
+                    existing_meta = db.execute('SELECT metadata FROM masks WHERE source=? AND id=? ORDER BY version DESC LIMIT 1', (source_id, maskId)).fetchone()
+                    if existing_meta and json.loads(existing_meta[0]).get('anatomyReadOnly'):
+                        annotation_domain.fail('READ_ONLY_ANATOMY', '解剖辅助图层不可编辑。', 409)
                 ensure_groups(db, source_id)
                 inherited_group = group_for(db, source_id, derived_from['maskId']) if derived_from else None
                 batch_group = requested_group or inherited_group or {
@@ -541,9 +578,22 @@ def save_masks(source_id: str, file: UploadFile = File(...), label: str = Form('
                         record['displayColor'] = display_color
                     if derived_from is not None and not previous:
                         record['derivedFrom'] = derived_from
+                    if anatomy_layer:
+                        record['anatomyReadOnly'] = True
+                        record['anatomyLayerId'] = anatomy_layer['id']
+                        record['name'] = anatomy_layer['labelMap'][str(int(value))]
+                        anatomy_layer['maskIds'].append(mid)
+                    if annotation_case:
+                        record['parentVersion'] = previous or None
+                        record['voxelCount'] = int(np.count_nonzero(data == value))
+                        record['voxelHash'] = hashlib.sha256((data == value).astype(np.uint8).tobytes()).hexdigest()
+                        content_changed = not previous or any(prior.get(field) != record.get(field) for field in ('voxelHash', 'name', 'labelOnly'))
+                        annotation_domain.bind_mask(db, annotation_case, annotationEntityId, record, bump=content_changed)
                     stage_dir = Path(temp) / mid
                     stage_dir.mkdir()
                     write_mask(stage_dir / 'mask.nii.gz', (data == value).astype(np.uint8), source)
+                    if annotation_case:
+                        record['fileSha256'] = hashlib.sha256((stage_dir / 'mask.nii.gz').read_bytes()).hexdigest()
                     (stage_dir / 'metadata.json').write_text(json.dumps(record), encoding='utf-8')
                     for file_path in stage_dir.iterdir():
                         with open(file_path, 'r+b') as persisted:
@@ -557,12 +607,17 @@ def save_masks(source_id: str, file: UploadFile = File(...), label: str = Form('
                     committed.append(target)
                     db.execute('INSERT INTO masks VALUES (?,?,?,?,?)', (source_id, mid, version, json.dumps(record), record['created']))
                     results.append(record)
+                if anatomy_layer:
+                    anatomy_case['anatomyLayers'].append(anatomy_layer)
+                    annotation_domain.persist(db, anatomy_case, bump=False)
+                if annotation_case and annotationRequestKey:
+                    db.execute('INSERT INTO annotation_requests VALUES (?,?,?,?)', (annotationCaseId, annotationRequestKey, digest, json.dumps({'items': results, 'caseRevision': annotation_case['revision']})))
                 db.commit()
         except Exception:
             for path in committed:
                 shutil.rmtree(path)
             raise
-        return {'items': results}
+        return dict(items=results, **({'caseRevision': annotation_case['revision']} if annotation_case else {}))
 
 
 def mask_record(source_id, mask_id, version=None):
@@ -590,6 +645,9 @@ class RestoreMask(BaseModel):
     version: int = Field(gt=0, strict=True)
     expectedVersion: int = Field(gt=0, strict=True)
     requestId: str = Field(pattern=r'^[a-f0-9-]{32,36}$')
+    annotationCaseId: str | None = None
+    annotationEntityId: str | None = None
+    expectedCaseRevision: int | None = None
 
 
 @router.post('/{source_id}/masks/{mask_id}/restore')
@@ -598,6 +656,8 @@ def restore_mask(source_id: str, mask_id: str, operation: RestoreMask):
     enabled()
     enabled('ENABLE_NIFTI_EDITING')
     chosen, original = mask_record(source_id, mask_id, operation.version)
+    if chosen.get('anatomyReadOnly'):
+        annotation_domain.fail('READ_ONLY_ANATOMY', '解剖辅助图层不可恢复或编辑。', 409)
     target = None
     with work(), tempfile.TemporaryDirectory(prefix='.restore-', dir=root()) as temp:
         try:
@@ -611,6 +671,7 @@ def restore_mask(source_id: str, mask_id: str, operation: RestoreMask):
                     record = json.loads(db.execute('SELECT metadata FROM masks WHERE source=? AND id=? AND version=?',
                                         (source_id, mask_id, repeated['version'])).fetchone()[0])
                     return {'item': with_group(db, source_id, record), 'replayed': True}
+                annotation_case = annotation_domain.validate_mask_write(db, source_id, mask_id, operation.annotationCaseId, operation.annotationEntityId, operation.expectedCaseRevision)
                 latest = json.loads(db.execute('SELECT metadata FROM masks WHERE source=? AND id=? ORDER BY version DESC LIMIT 1',
                                    (source_id, mask_id)).fetchone()[0])
                 if latest['version'] != operation.expectedVersion:
@@ -625,6 +686,8 @@ def restore_mask(source_id: str, mask_id: str, operation: RestoreMask):
                 # Copy lineage belongs to the annotation, not the selected point in time.
                 if 'derivedFrom' in latest:
                     record['derivedFrom'] = latest['derivedFrom']
+                if annotation_case:
+                    annotation_domain.bind_mask(db, annotation_case, operation.annotationEntityId, record)
                 stage = Path(temp) / 'version'
                 stage.mkdir()
                 shutil.copyfile(original, stage / 'mask.nii.gz')

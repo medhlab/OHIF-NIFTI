@@ -11,6 +11,7 @@
 - 独立 mask、多标签拆分、重叠展示、透明度与边界控制、版本历史及 NIfTI ZIP 导出。
 - nnInteractive 原生 NIfTI context v2；保留 DICOM v1 与既有 PACS 工作流。
 - 报告、Finding、mask 的清单关联；左侧完整病例树、原地切换病例、右侧报告和标注面板。
+- 单 CT 病灶工作台：精确报告证据、ReX 14 类、Finding–Entity 共享关联、版本化主 mask、完成百分比；已有结构结果只读导入。见 [第一版实现范围与验收](docs/ANNOTATION_V1_IMPLEMENTATION.md)（本地实现，待完整影像验收与部署）。
 - 黑紫色工作台；顶部可折叠标注工具、MPR 工具切换与 Crosshairs 开关。
 
 ## 本地开发

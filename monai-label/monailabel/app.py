@@ -107,6 +107,8 @@ from monailabel.endpoints import nifti_store
 app.include_router(nifti_store.router, prefix=settings.MONAI_LABEL_API_STR)
 from monailabel.endpoints import nifti_images
 app.include_router(nifti_images.router, prefix=settings.MONAI_LABEL_API_STR)
+from monailabel.endpoints import annotation
+app.include_router(annotation.router, prefix=settings.MONAI_LABEL_API_STR)
 from monailabel.endpoints import nifti_images
 app.include_router(nifti_images.router, prefix=settings.MONAI_LABEL_API_STR)
 
