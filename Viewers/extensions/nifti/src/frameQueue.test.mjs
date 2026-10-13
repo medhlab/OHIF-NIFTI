@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { FrameQueue } from './frameQueue.mjs';
+import { FrameQueue, outwardSlices } from './frameQueue.mjs';
 const tick = () => new Promise(r => setTimeout(r, 0));
 
 test('deduplicates consumers, preserves current requests, reserves interaction slot', async () => {
@@ -55,4 +55,35 @@ test('a distant navigation cancels obsolete background work before its new frame
   assert(old.every(signal => signal.aborted)); assert.equal(queue.nearby.size, 0);
   assert(started.includes(80)); assert.equal(queue.active, 1);
   queue.close(); assert.equal(await current, 'AbortError');
+});
+
+
+test('outward order covers the opening slice and both volume boundaries exactly once', () => {
+  assert.deepEqual(outwardSlices(9, 4), [4, 5, 3, 6, 2, 7, 1, 8, 0]);
+  assert.deepEqual(outwardSlices(4, 0), [0, 1, 2, 3]);
+  assert.deepEqual(outwardSlices(4, 3), [3, 2, 1, 0]);
+});
+
+test('whole-volume background fill progresses beyond the neighborhood without another display', async () => {
+  const loaded = new Set([25]), calls = [];
+  const queue = new FrameQueue(50, async i => { calls.push(i); loaded.add(i); }, i => loaded.has(i));
+  await Promise.all(outwardSlices(50, 25).map(i => queue.ensure(i, 'background')));
+  assert.equal(loaded.size, 50); assert.equal(new Set(calls).size, 49);
+  assert.deepEqual(calls.slice(0, 6), [26, 24, 27, 23, 28, 22]);
+  assert(loaded.has(0) && loaded.has(49)); queue.close();
+});
+
+test('far navigation preempts queued background frames using the reserved slot and keeps the fill alive', async () => {
+  const calls = [], pending = new Map(), loaded = new Set([10]);
+  const queue = new FrameQueue(30, (i, signal) => new Promise((resolve, reject) => {
+    calls.push(i); pending.set(i, () => { loaded.add(i); resolve(); });
+    signal.addEventListener('abort', () => reject(signal.reason), { once: true });
+  }), i => loaded.has(i));
+  const fill = Promise.allSettled(outwardSlices(30, 10).map(i => queue.ensure(i, 'background')));
+  await tick(); assert.deepEqual(calls, [11, 9]); assert.equal(queue.active, 2);
+  queue.cancelObsolete(28); const current = queue.ensure(28); await tick();
+  assert.deepEqual(calls, [11, 9, 28]); assert.equal(queue.active, 3);
+  pending.get(28)(); await current;
+  assert.equal(calls.filter(i => i === 28).length, 1);
+  queue.close(); await fill; await tick(); assert.equal(queue.jobs.size, 0);
 });

@@ -5,7 +5,7 @@ import { transformPoint } from './format.mjs';
 import { parseInWorker } from './workerClient';
 import { niftiMemoryLedger } from '../../default/src/utils/niftiMemoryLedger';
 import type { SourceDescriptor } from './types';
-import { createStream, ensureSlice, ensureComplete } from './streaming';
+import { createStream, ensureSlice, ensureComplete, startBackground } from './streaming';
 import { scalarTypes, dtypeName } from './frameCodec.mjs';
 import { releaseBrushPreview } from './releaseBrushPreview.mjs';
 
@@ -28,6 +28,7 @@ export function memorySnapshot() {
   return { sources: sources.size, images: metadata.size,
     streams: [...sources.values()].filter(s => s.stream).map(s => ({ sourceId: s.descriptor.sourceId,
       loaded: s.stream.loaded.reduce((a, b) => a + b, 0), total: s.stream.loaded.length,
+      backgroundOrigin: s.stream.backgroundOrigin, backgroundLoading: !!s.stream.backgroundCompletion, backgroundPaused: !!s.stream.backgroundPaused,
       pending: s.stream.queue.jobs.size, completing: s.stream.completing, errors: [...s.stream.errors.entries()],
       preparationSeconds: s.stream.descriptor.preparationSeconds, timings: s.stream.timings })),
     bytes: [...reservations.values()].reduce((a, b) => a + b, 0),
@@ -58,7 +59,10 @@ export function registerNifti(appConfig) {
       // Drive the window from the displayed image, including cached slices.
       // A stale loader response or a thumbnail must not move the window.
       niftiOnDisplayed: () => {
-        if (source.stream && !source.stream.disposed && !source.stream.completing && !source.stream.loaded.every(Boolean)) source.stream.queue.prefetch(entry.slice);
+        if (source.stream && !source.stream.disposed && !source.stream.completing && !source.stream.loaded.every(Boolean)) {
+          source.stream.queue.prefetch(entry.slice);
+          startBackground(source, entry.slice);
+        }
       },
       imageQualityStatus: Enums.ImageQualityStatus.FULL_RESOLUTION,
       color: false, rgba: false, numberOfComponents: 1, invert: false,

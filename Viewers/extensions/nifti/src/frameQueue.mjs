@@ -1,4 +1,4 @@
-const rank = { interactive: 0, prefetch: 1, complete: 2 };
+const rank = { interactive: 0, prefetch: 1, complete: 2, background: 3 };
 const aborted = () => new DOMException('Cancelled', 'AbortError');
 
 /** Consumer cancellation never cancels a frame still needed by another viewport. */
@@ -85,4 +85,15 @@ export class FrameQueue {
     }
     this.jobs.clear();
   }
+}
+
+/** Visit every slice once, alternating upward/downward from the opening slice. */
+export function outwardSlices(count, center) {
+  if (!Number.isInteger(center) || center < 0 || center >= count) throw Error('Invalid NIfTI slice index.');
+  const indices = [center];
+  for (let distance = 1; indices.length < count; distance++) {
+    if (center + distance < count) indices.push(center + distance);
+    if (center - distance >= 0) indices.push(center - distance);
+  }
+  return indices;
 }

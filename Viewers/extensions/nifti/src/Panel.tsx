@@ -13,7 +13,7 @@ import { activeAnatomyReadOnly } from './readonly';
 import { segmentation } from '@cornerstonejs/tools';
 import NiftiIcon from './NiftiIcon';
 import SavedMasksDialog from './SavedMasksDialog';
-import { ensureSlice, requestComplete } from './streaming';
+import { ensureSlice, requestComplete, pauseComplete } from './streaming';
 
 function Action({ label, icon: Icon, disabled, onClick }) {
   return <button type="button" title={label} aria-label={label} disabled={disabled} onClick={onClick}
@@ -157,10 +157,10 @@ export default function Panel() {
         {config.enableNiftiEditing && <Action label="导出 NIfTI ZIP（本地）" icon={Download} disabled={busy || !source?.masks.size} onClick={() => run(signal => exportLocal(servicesManager, signal))} />}
       </div>
       {streamOpen && source?.stream && <div aria-label="原图渐进加载状态" className="mt-2 rounded border border-primary/30 bg-primary/10 p-2 text-[14px] text-primary">
-        <span role="status">{source.stream.completing ? '正在准备完整体数据 · ' : slicePending ? '当前层加载中 · ' : '按需加载 · '}已加载 {source.stream.loaded.reduce((a, b) => a + b, 0)}/{source.stream.loaded.length} 层</span>
+        <span role="status">{source.stream.loaded.every(Boolean) ? '完整体数据已加载 · ' : source.stream.completing ? '正在准备完整体数据 · ' : slicePending ? '当前层加载中 · ' : source.stream.backgroundCompletion ? '后台向上下加载 · ' : source.stream.backgroundPaused ? '后台加载已暂停 · ' : '按需加载 · '}已加载 {source.stream.loaded.reduce((a, b) => a + b, 0)}/{source.stream.loaded.length} 层（{Math.round(source.stream.loaded.reduce((a, b) => a + b, 0) / source.stream.loaded.length * 100)}%）</span>
         <div className="mt-2 flex gap-2">
-          {source.stream.completeController ? <button onClick={() => source.stream.completeController.abort()}>取消完整加载</button>
-            : <button onClick={() => requestComplete(source).catch(e => { if (e.name !== 'AbortError') setError(e.message); })}>加载完整体数据</button>}
+          {source.stream.completeController || source.stream.backgroundController ? <button onClick={() => pauseComplete(source)}>暂停后台加载</button>
+            : <button disabled={source.stream.loaded.every(Boolean)} onClick={() => requestComplete(source).catch(e => { if (e.name !== 'AbortError') setError(e.message); })}>加载完整体数据</button>}
           <button onClick={() => {
             const viewport = servicesManager.services.cornerstoneViewportService.getCornerstoneViewport(servicesManager.services.viewportGridService.getState().activeViewportId);
             const index = viewport?.getCurrentImageIdIndex?.();

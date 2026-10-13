@@ -82,3 +82,8 @@ PYTHONPATH=monai-label python -m pytest monai-label/tests/nifti_native -q -o log
 同步状态：应用任务分支已推送，已验收提交已部署；main 尚未合并。团队部署记录同步到 cooperate_space 的 codex/annotation-v1-record。
 
 手工编辑入口回归脚本：`deploy/nifti/lesion-v1-manual-entry-acceptance.cjs`；默认测试回环 11027 的隔离候选并保存测试 mask。仅正式冒烟时显式设 `PRODUCTION_SMOKE=true`，该模式只在浏览器临时绘制、不保存 mask。运行依赖与结构合成文件参照已有真实 CT 验收说明。
+
+
+### CT 后台扩散加载
+
+首张实际显示的切片确定后台加载起点，按 +1/-1、+2/-2 依次向上下扩散，持续填满已分配的原图体数据。当前显示切片及其邻近预加载高于后台完整加载的优先级，队列最多 3 个请求、后台最多 2 个，翻页可使用预留槽位且同一帧请求共享。滚动不会中止完整加载队列或重置起点。单帧失败保留错误并继续其他帧；可从原图加载状态查看百分比、暂停或重新加载未完成部分。暂停不丢弃已加载数据，切换/释放病例会取消队列和解码，不污染下一病例。MPR/插值等必需完整数据的操作继续等待全部帧到齐。

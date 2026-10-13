@@ -1,4 +1,4 @@
-import { FrameQueue } from './frameQueue.mjs';
+import { FrameQueue, outwardSlices } from './frameQueue.mjs';
 import { scalarTypes, dtypeName } from './frameCodec.mjs';
 import { createFrameDecoder } from './workerClient';
 import { request } from './api';
@@ -89,13 +89,35 @@ export function createStream(source, descriptor) {
       }
     } catch (error) { if (error.name !== 'AbortError') state.errors.set(index, error.message); throw error; }
   }, index => !!state.loaded[index]);
-  state.dispose = () => { state.disposed = true; state.queue.close(); state.decoder.dispose(); };
+  state.dispose = () => { state.disposed = true; pauseComplete(source); state.queue.close(); state.decoder.dispose(); };
   return state;
+}
+
+/** A one-shot fill starts only after an actual slice is displayed, never a thumbnail. */
+export function startBackground(source, center) {
+  const state = source.stream;
+  if (!state || state.disposed || state.backgroundStarted || state.loaded.every(Boolean)) return;
+  const indices = outwardSlices(state.loaded.length, center);
+  state.backgroundStarted = true; state.backgroundOrigin = center; state.backgroundPaused = false;
+  const controller = new AbortController(); state.backgroundController = controller;
+  // Lowest priority: navigation and required whole-volume operations take precedence.
+  // Failed frames stay visible in errors; one failure must not stop all other slices.
+  state.backgroundCompletion = Promise.allSettled(indices.map(index =>
+    ensureSlice(source, index, controller.signal, 'background'))).finally(() => {
+      state.backgroundCompletion = undefined; state.backgroundController = undefined;
+    });
+}
+
+export function pauseComplete(source) {
+  const state = source.stream;
+  if (!state) return;
+  state.backgroundPaused = true;
+  state.backgroundController?.abort(); state.completeController?.abort();
 }
 
 export async function ensureSlice(source, index, signal?, kind = 'interactive') {
   if (source.stream) {
-    // Free old background transfers as soon as navigation starts, before paint.
+    // Cancel obsolete nearby subscribers; keep the continuous whole-volume fill.
     if (kind === 'interactive' && !source.stream.completing && !signal?.aborted) source.stream.queue.cancelObsolete(index);
     await source.stream.queue.ensure(index, kind, signal);
   }
@@ -107,7 +129,10 @@ export async function ensureComplete(source, signal?) {
   const abort = () => controller.abort(signal?.reason);
   signal?.throwIfAborted(); signal?.addEventListener('abort', abort, { once: true });
   source.stream.completing++;
-  try { await Promise.all([...source.stream.loaded].map((_, index) => ensureSlice(source, index, controller.signal, 'complete'))); }
+  try {
+    const order = source.stream.backgroundOrigin === undefined ? [...source.stream.loaded.keys()] : outwardSlices(source.stream.loaded.length, source.stream.backgroundOrigin);
+    await Promise.all(order.map(index => ensureSlice(source, index, controller.signal, 'complete')));
+  }
   finally { controller.abort(); signal?.removeEventListener('abort', abort); source.stream.completing--; }
 }
 
@@ -115,7 +140,7 @@ export function requestComplete(source) {
   if (!source.stream) return Promise.resolve();
   const state = source.stream;
   if (state.completion) return state.completion;
-  const controller = new AbortController(); state.completeController = controller;
+  const controller = new AbortController(); state.completeController = controller; state.backgroundPaused = false;
   state.completion = ensureComplete(source, controller.signal).finally(() => {
     state.completion = undefined; state.completeController = undefined;
   });
