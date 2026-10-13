@@ -1,0 +1,57 @@
+{
+  "deployedAt": "2026-10-13T06:48:50.387035+00:00",
+  "commit": "d5f00fee2c522fe88cd74f6536982ee58fcffa4d",
+  "images": {
+    "viewer": "sha256:1cccebd22912257ecbad766d07b12f1dbf16977eac62f45107a6c713a57016cf",
+    "backend": "sha256:9f6403301a129f8ea5504456131d5c9f8aa5715c9d194552a1b3571a980beaf6"
+  },
+  "imageTags": {
+    "backend": "ohif-nifti-rtx4500-backend:nninteractive-d5f00fe",
+    "viewer": "ohif-nifti-rtx4500-viewer:nninteractive-d5f00fe"
+  },
+  "candidatePassed": true,
+  "productionBrowserSmoke": true,
+  "productionTestMaskSaved": false,
+  "previousSource": "/home/ant/projects/OHIF-NIFTI/releases/annotation-manual-20261013/source",
+  "source": "/home/ant/projects/OHIF-NIFTI/releases/nninteractive-20261013/source",
+  "stateDirectory": "/home/ant/projects/OHIF-NIFTI/state",
+  "rollbackCompose": "/home/ant/projects/OHIF-NIFTI/releases/nninteractive-20261013/production-backup/compose.rollback.json",
+  "rollbackCommand": "python3 /home/ant/projects/OHIF-NIFTI/releases/nninteractive-20261013/rollback_remote.py",
+  "weights": "/home/ant/projects/OHIF-NIFTI/models/nnInteractive_v1.0",
+  "checkpointSHA256": "b3ac4421f85457bbd1aa0d87f5e67bcb7bc8e2ce6b824b6ac45077cc5d630ea9",
+  "gpu": "GPU-53ea6923-163a-660e-73e0-d18bd8ea5458",
+  "aiFlags": true,
+  "verifiedAt": "2026-10-13T07:02:34.700631+00:00",
+  "health": {
+    "status": "ok",
+    "models": {
+      "nninteractive": {
+        "state": "ready"
+      },
+      "voxtell": {
+        "state": "disabled"
+      },
+      "sam2": {
+        "state": "disabled"
+      },
+      "medsam2": {
+        "state": "disabled"
+      },
+      "sam3": {
+        "state": "disabled"
+      },
+      "medgemma": {
+        "state": "disabled"
+      }
+    }
+  },
+  "productionAcceptance": "/home/ant/projects/OHIF-NIFTI/releases/nninteractive-20261013/production-results/nninteractive-results.json",
+  "existingStatePreserved": true,
+  "gpuSummary": {
+    "sampleCount": 8880,
+    "peakTotalGPUMiB": 5837,
+    "peakUtilizationPercent": 100,
+    "productionPid": 3311709,
+    "computeApps": "pid, process_name, used_gpu_memory [MiB]\n3311709, python, 1622 MiB\n"
+  }
+}

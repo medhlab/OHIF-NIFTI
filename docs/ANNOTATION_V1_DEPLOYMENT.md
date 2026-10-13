@@ -1,5 +1,7 @@
 # 第一版部署与真实 CT 验收
 
+当前版本已启用 nnInteractive，前后端均为 d5f00fe；最新验证和回退见 [nnInteractive 部署记录](NNINTERACTIVE_DEPLOYMENT.md)。下面保留手工编辑与首版的历史部署。
+
 ## 手工编辑入口修复（2026-10-13，13:27 Asia/Shanghai）
 
 - 已部署前端 `b40509990d5ea7d17c91f2a078e3bd76f770e9ec`，镜像 `ohif-nifti-rtx4500-viewer:annotation-manual-b405099`；后端仍为 `9bfe0f10bc9f0ce4a8c5c10255825ed22b1682ec`。仅重建前端容器，后端及生产 state/ 保持原位。
