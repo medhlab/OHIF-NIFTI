@@ -1,6 +1,6 @@
 # 单 CT 病灶标注第一版
 
-更新时间：2026-10-13，Asia/Shanghai。实现仓库 `medhlab/OHIF-NIFTI`，分支 `codex/annotation-v1`，基线 `ca7cf52`。本记录描述本地实现和验证；尚未推送、部署或使用真实病例验收。
+更新时间：2026-10-13，Asia/Shanghai。实现仓库 `medhlab/OHIF-NIFTI`，分支 `codex/annotation-v1`，基线 `ca7cf52`。本版已完整构建、完成真实 CT 工程验收并部署到 rtx4500；[部署与验收记录](ANNOTATION_V1_DEPLOYMENT.md)。
 
 ## 范围与入口
 
@@ -63,11 +63,11 @@ Case 包含 reports、evidence、findings、entities、links、anatomyLayers、w
 2026-10-13 本地验证：
 
 - 原生 NIfTI 后端回归 **142 项通过**，含新增 8 项病灶业务测试；覆盖精确 Unicode 原文、共享 Entity、幂等注册/保存、冲突、空草稿、保存失败回滚、完成后修改失效、颜色保存保持完成、结构只读及固定分母。
-- 8 个变更前端模块语法转译通过。
+- 13 个变更前端模块语法转译通过。
 - 真实 React 病灶面板 + 真实 FastAPI 接口的无头浏览器联调通过：原文选区、共享病灶、完成拒绝、非空 mask API 保存、50% 进度、类别修改失效、重新打开身份与证据保留。
 - 实际 `saveAll` 函数联调通过：服务器已保存但随后的 context 响应丢失，重试后版本仅从 1 增至 2；自动登记 Entity 的成功响应丢失后，重试也只创建一个新 Entity。浏览器无未捕获错误。
 
-浏览器测试的影像引擎使用替身，合成 CT 为 7×9×11；没有验证实际 Cornerstone 渲染、笔刷效果、真实 TotalSegmentator 全量图层或 GPU AI。浏览器脚本与截图为本地临时验收产物，尚未共享。当前 checkout 未安装完整 Viewers 依赖，未运行完整 OHIF 构建或端到端影像验收。
+以上局部联调用合成 CT 和影像引擎替身。后续已补全完整 OHIF 构建及真实 Cornerstone/鼠标/持久化验收，见部署记录。真实 TotalSegmentator 全量图层与 GPU AI 未验收，用户稍后补结构文件。
 
 后端复验（Python 3.10+，安装项目运行依赖及 pytest/httpx，Node 在 PATH）：
 
@@ -75,6 +75,6 @@ Case 包含 reports、evidence、findings、entities、links、anatomyLayers、w
 PYTHONPATH=monai-label python -m pytest monai-label/tests/nifti_native -q -o log_cli=false
 ```
 
-下一步在完整开发环境构建 OHIF，使用少量真实 CT 验收绘制、保存、重新打开和结构显示，再安排服务器部署。部署前保留原图库/SQLite/mask 备份；应用回退不得删除标注状态。没有服务器、GPU 或公共数据操作，也没有改变线上版本。
+已保留生产状态及回退配置，成套升级前后端；实际测试代码见 deploy/nifti/lesion-v1-acceptance.cjs，正式 HTTPS 冒烟见 deploy/nifti/lesion-v1-production-smoke.cjs。无 GPU 模型运行，真实解剖资产验收仍待文件。
 
-同步状态：技术实现与本地检查完成；完整影像验收待执行。代码与协作记录待推送，原因是本次授权范围为本地第一版实现；负责人为当前 Annotation 会话。
+同步状态：应用任务分支已推送，已验收提交已部署；main 尚未合并。团队部署记录同步到 cooperate_space 的 codex/annotation-v1-record。

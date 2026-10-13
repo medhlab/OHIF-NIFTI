@@ -1,0 +1,42 @@
+{
+  "deployedAt": "2026-10-13T04:47:17.903561+00:00",
+  "commit": "9bfe0f10bc9f0ce4a8c5c10255825ed22b1682ec",
+  "root": "/home/ant/projects/OHIF-NIFTI",
+  "source": "/home/ant/projects/OHIF-NIFTI/releases/annotation-v1-20261013/source",
+  "previousImages": {
+    "viewer": "sha256:d11d262db02374a5bac4628a57fb43b504aa30b16d013c06dd15a454b6f685a1",
+    "backend": "sha256:70e3c6305af9f3606c081e27998cf9d18827c4a4dd095f6d5b56a6f89f39c1b2"
+  },
+  "activeImages": {
+    "viewer": "sha256:09fd2cc74951c4b7da8dd93d7cb76aed05580646407df2e5040e2d58048127b1",
+    "backend": "sha256:6d57e415bf9db86f1d6c4cf34486b654089bf391183e89b38175237dea437665"
+  },
+  "stateDirectory": "/home/ant/projects/OHIF-NIFTI/state",
+  "backupDirectory": "/home/ant/projects/OHIF-NIFTI/releases/annotation-v1-20261013/production-backup",
+  "rollbackCompose": "/home/ant/projects/OHIF-NIFTI/releases/annotation-v1-20261013/production-backup/compose.rollback.json",
+  "baseline": {
+    "sourceCount": 3,
+    "maskVersionCount": 5,
+    "manifestCount": 1
+  },
+  "health": true,
+  "existingIndexRowsPreserved": true,
+  "existingImmutableFilesPreserved": true,
+  "existingImmutableFileCount": 15,
+  "candidateTestStatePublished": false,
+  "realAnatomicalMaskAcceptance": "deferred by user; synthetic two-label import/display/readonly acceptance only",
+  "gpuInference": false,
+  "productionBrowserSmoke": true,
+  "productionCaseCount": 25,
+  "productionEntityCount": 0,
+  "postBrowserOriginalFilesPreserved": true,
+  "postBrowserOriginalImageAndMaskRowsPreserved": true,
+  "postBrowserManifestContentsPreserved": true,
+  "manifestRevisionChanges": [
+    {
+      "manifestId": "bc1ed805723b4150ad6451bad378d955",
+      "beforeRevision": 11,
+      "afterRevision": 12
+    }
+  ]
+}
