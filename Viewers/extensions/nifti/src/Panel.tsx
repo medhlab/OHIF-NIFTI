@@ -8,6 +8,9 @@ import { currentSource, createMask, importMasks, saveAll, loadSaved, exportLocal
 import GroupedSegmentationPanel from './GroupedSegmentationPanel';
 import { config, memorySnapshot } from './sourceStore';
 import { ensureStored } from './api';
+import { registerAnnotationCase } from './annotationClient';
+import { activeAnatomyReadOnly } from './readonly';
+import { segmentation } from '@cornerstonejs/tools';
 import NiftiIcon from './NiftiIcon';
 import SavedMasksDialog from './SavedMasksDialog';
 import { ensureSlice, requestComplete } from './streaming';
@@ -89,6 +92,41 @@ export default function Panel() {
     if (failures.length) throw Error(failures.map(r => r.error).join('；'));
   });
   const add = (group?) => run(signal => createMask(servicesManager, `新目标 ${(source?.masks.size || 0) + 1}`, undefined, undefined, signal, group));
+  const prepareManual = async () => {
+    if (task.current || busy) throw Error('请等待当前操作完成。');
+    if (activeAnatomyReadOnly(servicesManager)) throw Error('结构辅助图层只读，请先选择病灶，或在病灶工作台新建病灶。');
+    const { source: target, viewportId } = currentSource(servicesManager);
+    const controller = new AbortController(); task.current = controller;
+    setBusy(true); setError(''); setMessage('正在准备手工编辑…');
+    try {
+      await registerAnnotationCase(target, controller.signal);
+      const service = servicesManager.services.segmentationService;
+      let mask = target.masks.get(service.getActiveSegmentation(viewportId)?.segmentationId);
+      if (!mask) mask = [...target.masks.values()].find(m => !m.anatomyReadOnly && !m.saved?.anatomyReadOnly);
+      // Reopen an existing lesion before creating a new local target.
+      const entity = !mask && target.annotationCase.entities[0];
+      if (entity?.maskId) {
+        const results = await loadSaved(servicesManager, controller.signal, [entity.maskId]);
+        const failure = results.find(r => r.status === 'failed'); if (failure) throw Error(failure.error);
+        mask = [...target.masks.values()].find(m => m.saved?.maskId === entity.maskId);
+      }
+      if (!mask) {
+        const id = await createMask(servicesManager, entity?.name || `病灶 ${target.annotationCase.entities.length + 1}`, undefined, undefined, controller.signal);
+        mask = target.masks.get(id);
+        if (entity) mask.entityId = entity.id;
+        mask.annotationCaseId = target.annotationCase.caseId;
+      }
+      controller.signal.throwIfAborted();
+      if (currentSource(servicesManager).source !== target) throw new DOMException('病例已切换。', 'AbortError');
+      if (segmentation.segmentLocking.isSegmentIndexLocked(mask.segmentationId, 1)) throw Error('当前病灶已锁定，请先解锁或选择其他病灶。');
+      service.setActiveSegmentation(viewportId, mask.segmentationId);
+      service.setActiveSegment(mask.segmentationId, 1);
+      setMessage(`正在编辑 ${mask.label}：在 CT 上拖动画笔，完成后点击 Save All。`);
+      update(n => n + 1);
+    } finally {
+      if (task.current === controller) { task.current = undefined; setBusy(false); }
+    }
+  };
   const prepareAI = async () => {
     if (busy) throw Error('请等待当前操作完成。');
     const controller = new AbortController(); task.current = controller;
@@ -100,7 +138,7 @@ export default function Panel() {
   const viewport = servicesManager.services.cornerstoneViewportService.getCornerstoneViewport(servicesManager.services.viewportGridService.getState().activeViewportId);
   const slicePending = source?.stream && viewport?.getCurrentImageId?.() !== viewport?.getCornerstoneImage?.()?.imageId;
   return <div className="nifti-annotation flex min-h-full flex-col text-white">
-    {(config.enableNiftiAI || config.enableNiftiEditing) && <AnnotationTools key={source?.sourceKey || 'pending'} sourceKey={source?.sourceKey} enableAI={config.enableNiftiAI} enableEditing={config.enableNiftiEditing} beforeAI={prepareAI} />}
+    {(config.enableNiftiAI || config.enableNiftiEditing) && <AnnotationTools key={source?.sourceKey || 'pending'} sourceKey={source?.sourceKey} enableAI={config.enableNiftiAI} enableEditing={config.enableNiftiEditing} beforeAI={prepareAI} beforeManual={prepareManual} />}
     <div className="border-b border-primary/20 p-3">
       <div className="mb-3 flex items-center gap-2">
         <Link title="返回 NIfTI 检查列表" aria-label="打开另一例 NIfTI" to="/nifti" className="rounded p-1 text-primary hover:bg-primary/20" onClick={e => {

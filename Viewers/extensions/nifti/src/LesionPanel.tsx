@@ -1,9 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { useSystem } from '@ohif/core';
 import { currentSource, createMask, loadSaved, isMaskDirty } from './masks';
-import { ensureStored } from './api';
-import { annotationRequest, installAnnotationContext } from './annotationClient';
-import { getWorkspace } from './workspace';
+import { annotationRequest, installAnnotationContext, registerAnnotationCase } from './annotationClient';
 import './lesion-panel.css';
 
 export default function LesionPanel() {
@@ -54,30 +52,9 @@ export default function LesionPanel() {
     return () => { clearInterval(timer); window.removeEventListener('nifti:annotation-updated', updated); };
   }, []);
   const initialise = target => run(async () => {
-    await ensureStored(target);
-    const w = getWorkspace(); let caseId = target.annotationCase?.caseId;
-    if (w.manifest?.id && w.caseId) {
-      const list = await annotationRequest('/worklists', { manifestId: w.manifest.id });
-      caseId = list.items.find(i => i.externalCaseId === w.caseId)?.caseId;
-    } else if (!caseId) {
-      const fromUrl = new URL(window.location.href).searchParams.get('annotationCaseId');
-      if (fromUrl) {
-        const existing = await annotationRequest(`/cases/${encodeURIComponent(fromUrl)}/context`);
-        if (existing.data.sourceId === target.descriptor.sourceId) caseId = fromUrl;
-      }
-    }
-    target.registrationKey ||= crypto.randomUUID();
-    const body = await annotationRequest('/cases', { sourceId: target.descriptor.sourceId, ...(caseId ? { caseId } : {}) }, undefined, target.registrationKey);
-    target.registrationKey = undefined;
-    installAnnotationContext(target, body);
+    const context = await registerAnnotationCase(target);
     if (sourceRef.current !== target) return;
-    setContext(body.data);
-    // A direct-source link can restore the same explicitly registered annotation Case.
-    if (!w.manifest?.id) {
-      const url = new URL(window.location.href); url.searchParams.set('annotationCaseId', body.caseId);
-      url.searchParams.set('sourceId', target.descriptor.sourceId);
-      window.history.replaceState(window.history.state, '', url);
-    }
+    setContext(context);
     await refresh(target);
   });
   const mutate = async (target, payload) => {

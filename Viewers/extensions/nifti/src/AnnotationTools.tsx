@@ -43,7 +43,7 @@ const settingLabels = {
   Range: '范围',
 };
 
-export default function AnnotationTools({ beforeAI, enableAI, enableEditing, sourceKey }) {
+export default function AnnotationTools({ beforeAI, beforeManual, enableAI, enableEditing, sourceKey }) {
   const { servicesManager } = useSystem();
   const { uiNotificationService } = servicesManager.services;
   const anatomyReadOnly = activeAnatomyReadOnly(servicesManager);
@@ -143,6 +143,24 @@ export default function AnnotationTools({ beforeAI, enableAI, enableEditing, sou
       if (token === sequence.current) setPending(false);
     }
   };
+  const startManual = async () => {
+    if (pending) return;
+    const token = ++sequence.current;
+    setMode('manual'); setCollapsed(false); setPending(true);
+    try {
+      await beforeManual?.();
+      if (token !== sequence.current) return;
+      if (activeAnatomyReadOnly(servicesManager)) throw Error('结构辅助图层只读，请先选择病灶后编辑。');
+      // Starting manual editing keeps the brush active on repeated clicks.
+      // Read toolbar options after preparation rather than stale disabled props.
+      ai.onInteraction({ itemId: 'Brush' });
+    } catch (error) {
+      if (token === sequence.current)
+        uiNotificationService.show({ title: '手工编辑', message: error.message, type: 'error' });
+    } finally {
+      if (token === sequence.current) setPending(false);
+    }
+  };
   const selectMode = next => {
     if (next === mode) return;
     browse();
@@ -150,7 +168,7 @@ export default function AnnotationTools({ beforeAI, enableAI, enableEditing, sou
   };
   const renderTool = (tool, action = false) => {
     const props = tool.componentProps;
-    const disabled = anatomyReadOnly || props.disabled || (mode === 'ai' && (locked || pending));
+    const disabled = anatomyReadOnly || pending || props.disabled || (mode === 'ai' && locked);
     return (
       <button
         key={tool.id}
@@ -240,7 +258,9 @@ export default function AnnotationTools({ beforeAI, enableAI, enableEditing, sou
               type="button"
               role="tab"
               aria-selected={mode === 'manual'}
-              onClick={() => selectMode('manual')}
+              onClick={startManual}
+                disabled={pending}
+                title="开始编辑当前病灶；没有病灶时新建编辑目标"
             >
               <Paintbrush size={16} />
               手工编辑
