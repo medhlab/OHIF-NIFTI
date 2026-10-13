@@ -155,8 +155,10 @@ export default function AnnotationTools({ beforeAI, beforeManual, enableAI, enab
       // Read toolbar options after preparation rather than stale disabled props.
       ai.onInteraction({ itemId: 'Brush' });
     } catch (error) {
-      if (token === sequence.current)
+      if (token === sequence.current) {
+        browse();
         uiNotificationService.show({ title: '手工编辑', message: error.message, type: 'error' });
+      }
     } finally {
       if (token === sequence.current) setPending(false);
     }
@@ -259,8 +261,8 @@ export default function AnnotationTools({ beforeAI, beforeManual, enableAI, enab
               role="tab"
               aria-selected={mode === 'manual'}
               onClick={startManual}
-                disabled={pending}
-                title="开始编辑当前病灶；没有病灶时新建编辑目标"
+              disabled={pending}
+              title="开始编辑当前病灶；没有病灶时新建编辑目标"
             >
               <Paintbrush size={16} />
               手工编辑

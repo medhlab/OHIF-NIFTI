@@ -123,6 +123,9 @@ export default function Panel() {
       service.setActiveSegment(mask.segmentationId, 1);
       setMessage(`正在编辑 ${mask.label}：在 CT 上拖动画笔，完成后点击 Save All。`);
       update(n => n + 1);
+    } catch (error) {
+      if (task.current === controller) setMessage('');
+      throw error;
     } finally {
       if (task.current === controller) { task.current = undefined; setBusy(false); }
     }
