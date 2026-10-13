@@ -131,11 +131,11 @@ export default function Panel() {
     }
   };
   const prepareAI = async () => {
-    if (busy) throw Error('请等待当前操作完成。');
+    if (task.current || busy) throw Error('请等待当前操作完成。');
     const controller = new AbortController(); task.current = controller;
     setBusy(true); setError('');
     try { await ensureStored(source, controller.signal, p => setMessage(`上传原图 ${Math.round(p * 100)}%`)); }
-    finally { setBusy(false); }
+    finally { if (task.current === controller) { task.current = undefined; setBusy(false); } }
   };
   const dirty = source ? [...source.masks.values()].filter(m => isMaskDirty(servicesManager, m)).length : 0;
   const viewport = servicesManager.services.cornerstoneViewportService.getCornerstoneViewport(servicesManager.services.viewportGridService.getState().activeViewportId);
