@@ -132,3 +132,30 @@ def test_orphan_version_is_never_overwritten(client, tmp_path):
     assert reply.status_code == 200, reply.text
     assert reply.json()['items'][0]['version'] == 3
     assert (orphan / 'uncommitted').read_text() == 'preserve for audit'
+
+
+def test_ai_capability_follows_runtime_without_rewriting_source(client, tmp_path, monkeypatch):
+    import json
+    path = tmp_path / 'source.nii'
+    phantom(path)
+    monkeypatch.setenv('ENABLE_NIFTI_AI', 'false')
+    source = upload(client, path).json()
+    identity = source['sourceId']
+    assert source['capabilities']['ai'] is False
+    with nifti_images.database() as db:
+        original_metadata = db.execute('SELECT metadata FROM sources WHERE id=?', (identity,)).fetchone()[0]
+    for enabled in (True, False, True):
+        monkeypatch.setenv('ENABLE_NIFTI_AI', str(enabled).lower())
+        descriptors = [
+            client.get(f'/nifti-images/{identity}/metadata').json(),
+            client.get('/nifti-images').json()['items'][0],
+            upload(client, path).json(),
+        ]
+        for descriptor in descriptors:
+            assert descriptor['sourceId'] == identity
+            assert descriptor['contentHash'] == source['contentHash']
+            assert descriptor['geometryHash'] == source['geometryHash']
+            assert descriptor['capabilities']['ai'] is enabled
+        with nifti_images.database() as db:
+            assert db.execute('SELECT metadata FROM sources WHERE id=?', (identity,)).fetchone()[0] == original_metadata
+    assert json.loads(original_metadata)['capabilities']['ai'] is False

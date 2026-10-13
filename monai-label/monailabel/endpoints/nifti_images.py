@@ -241,13 +241,21 @@ def checked_id(value):
     return value
 
 
+def runtime_source_descriptor(meta):
+    # Capabilities belong to the running deployment, not the original upload.
+    # Keep stored image metadata and identity unchanged when AI is enabled later.
+    return meta | {'capabilities': (meta.get('capabilities') or {}) | {
+        'ai': os.environ.get('ENABLE_NIFTI_AI', 'false').lower() == 'true',
+    }}
+
+
 def get_source(source_id):
     checked_id(source_id)
     with database() as db:
         row = db.execute('SELECT metadata FROM sources WHERE id=?', (source_id,)).fetchone()
     if not row:
         raise HTTPException(404, 'NIfTI source not found.')
-    return json.loads(row['metadata'])
+    return runtime_source_descriptor(json.loads(row['metadata']))
 
 
 def source_path(source_id, meta=None):
@@ -323,7 +331,7 @@ def upload_source(file: UploadFile = File(...), unit: str = Form(None), modality
             db.execute('BEGIN IMMEDIATE')
             existing = db.execute('SELECT metadata FROM sources WHERE hash=?', (meta['contentHash'],)).fetchone()
             if existing:
-                return json.loads(existing['metadata'])
+                return runtime_source_descriptor(json.loads(existing['metadata']))
             identity = uuid.uuid4().hex
             meta.update(sourceType='nifti', sourceId=identity, name=name(file.filename), modality=modality,
                         created=now(), provenance={'originalName': name(file.filename), 'transforms': []},
@@ -349,7 +357,7 @@ def list_sources(offset: int = Query(0, ge=0), limit: int = Query(50, ge=1, le=1
     with database() as db:
         rows = db.execute('SELECT metadata FROM sources ORDER BY created DESC LIMIT ? OFFSET ?', (limit, offset)).fetchall()
         total = db.execute('SELECT count(*) FROM sources').fetchone()[0]
-    return {'items': [json.loads(row['metadata']) for row in rows], 'total': total, 'offset': offset, 'limit': limit}
+    return {'items': [runtime_source_descriptor(json.loads(row['metadata'])) for row in rows], 'total': total, 'offset': offset, 'limit': limit}
 
 
 @router.get('/{source_id}/metadata')
