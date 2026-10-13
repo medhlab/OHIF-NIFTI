@@ -10,10 +10,12 @@
 - 粘贴报告原文并保存；病例清单已提供的报告在首次登记时导入。清单中的文本片段按独立章节保存，不编造缺失的完整报告位置。
 - 在只读原文框选文字，创建 Finding，并选择 ReXGroundingCT 14 类之一；允许暂未分类或无原文的影像发现。
 - 为 Finding 新增病灶，或选取共享病灶建立关联。两条 Finding 可共享一个 Entity，原文证据独立保留。
-- 点击病灶进入“标注与 AI”；绘制后使用 **Save All**。一个 Entity 有一份主二值 mask，多个 Entity 的 mask 可重叠。保存保留不可变版本，历史恢复生成新版本。
+- 点击病灶进入“标注与 AI”，点击“手工编辑”启用画笔；绘制后使用 **Save All**。一个 Entity 有一份主二值 mask，多个 Entity 的 mask 可重叠。保存保留不可变版本，历史恢复生成新版本。
 - 当前编辑保存后点击“标记完成”。需要空间标注的 Entity 必须有非空已保存 mask；无需空间标注时显式填写原因。空草稿不能通过完成检查。
 - 从固定病例清单登记 Worklist，按整个清单的病例数显示 `已完成/总数` 与百分比，包含尚未打开的病例。直接打开单个 CT 显示病例状态，不虚构任务分母。
 - 修改报告、Finding、Entity、关联或 mask 内容后需要重新标记完成。只改变显示颜色、透明度或加载结构图层不使完成状态失效。
+
+也可直接在“标注与 AI”点击“手工编辑”：入口自动登记同一业务病例，并恢复已有病灶或准备新本地目标；保存时登记 Entity。重复点击不新增目标。结构只读及锁定目标会显示提示。
 
 直接原图登记的病例通过 URL 中 `annotationCaseId` 恢复；病例清单使用清单 ID 与外部病例 ID 显式映射。相同影像内容不推断为同一临床病例。重新打开后点击“打开病灶工作台”，再点击病灶加载其主 mask。
 
@@ -78,3 +80,5 @@ PYTHONPATH=monai-label python -m pytest monai-label/tests/nifti_native -q -o log
 已保留生产状态及回退配置，成套升级前后端；实际测试代码见 deploy/nifti/lesion-v1-acceptance.cjs，正式 HTTPS 冒烟见 deploy/nifti/lesion-v1-production-smoke.cjs。无 GPU 模型运行，真实解剖资产验收仍待文件。
 
 同步状态：应用任务分支已推送，已验收提交已部署；main 尚未合并。团队部署记录同步到 cooperate_space 的 codex/annotation-v1-record。
+
+手工编辑入口回归脚本：`deploy/nifti/lesion-v1-manual-entry-acceptance.cjs`；默认测试回环 11027 的隔离候选并保存测试 mask。仅正式冒烟时显式设 `PRODUCTION_SMOKE=true`，该模式只在浏览器临时绘制、不保存 mask。运行依赖与结构合成文件参照已有真实 CT 验收说明。

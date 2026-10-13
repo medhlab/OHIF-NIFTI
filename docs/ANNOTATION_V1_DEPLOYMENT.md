@@ -1,6 +1,16 @@
 # 第一版部署与真实 CT 验收
 
-## 2026-10-13 单 CT 病灶标注上线
+## 手工编辑入口修复（2026-10-13，13:27 Asia/Shanghai）
+
+- 已部署前端 `b40509990d5ea7d17c91f2a078e3bd76f770e9ec`，镜像 `ohif-nifti-rtx4500-viewer:annotation-manual-b405099`；后端仍为 `9bfe0f10bc9f0ce4a8c5c10255825ed22b1682ec`。仅重建前端容器，后端及生产 state/ 保持原位。
+- 根因：按钮仅切换模式；页面默认 manual，但无目标、画笔禁用，重复点击立即返回。修复后单击注册/恢复同一业务病例、准备可编辑目标并启用画笔；没有目标时新建本地病灶目标，Save All 登记 Entity 和主 mask。有已保存病灶时先恢复它。重复点击复用目标并继续绘制。只读结构和锁定病灶显示提示并切回浏览。
+- 两轮完整 yarn build 通过，13 个前端模块语法检查通过。最终真实 CT-RATE valid_1_a_2 的 7 项隔离回归通过：单击入口、重复复用、实际绘制 4,765 体素、Save All、刷新恢复同 Entity 与体素哈希、锁定提示/浏览、结构只读提示/哈希不变。正式 HTTPS 的入口、重复点击和实际绘制 3 项通过，正式环境没有保存验收 mask。无未捕获 JS 错误。
+- 公共源码与证据：rtx4500 `/home/ant/projects/OHIF-NIFTI/releases/annotation-manual-20261013/`；source/ 链接现指向此处的 source/。包含最终构建日志、manual-acceptance.json、manual-production.json、deployment-receipt.json、浏览器截图和独立候选 state-final/；测试标注没有发布到正式状态。
+- 回退本次前端：`docker compose -f /home/ant/projects/OHIF-NIFTI/releases/annotation-manual-20261013/compose.rollback.json up -d --no-deps --no-build --pull never viewer`。源码入口如需回退，恢复 source/ 链接到前一 release 的 source/；应用回退不删除 state/。首版前后端升级的完整回退和历史证据见下面首版部署记录。
+- 用户操作：刷新页面 → 标注与 AI → 手工编辑 → 在 CT 上拖动画笔 → Save All。真实 TotalSegmentator 文件仍由用户之后补充，本次结构回归使用明确标注“非解剖”的合成标签，没有 GPU 推理。
+
+
+## 首版部署历史：2026-10-13 单 CT 病灶标注上线
 
 - 当前应用：medhlab/OHIF-NIFTI `codex/annotation-v1`，部署提交 `9bfe0f10bc9f0ce4a8c5c10255825ed22b1682ec`；前后端成套镜像标签 `annotation-v1-9bfe0f1`，精确镜像 ID 见部署回执。
 - 已部署源码：rtx4500 `/home/ant/projects/OHIF-NIFTI/source/` 现为指向 `/home/ant/projects/OHIF-NIFTI/releases/annotation-v1-20261013/source/` 的链接；旧 ca7cf52 快照保留于 `/home/ant/projects/OHIF-NIFTI/source-ca7cf52-20261013/`。
