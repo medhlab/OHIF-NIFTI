@@ -3,6 +3,7 @@ import { createDataSource, getSopClassHandlerModule } from './dataSource';
 import Panel from './WorkspacePanel';
 import CaseFilesPanel from './CaseFilesPanel';
 import { attachMaskEvents } from './masks';
+import { installAnatomyReadOnlyGuard } from './readonly';
 
 export { default as NiftiGateway } from './Gateway';
 export { default as NiftiIcon } from './NiftiIcon';
@@ -10,9 +11,10 @@ export { releaseAllSources } from './sourceStore';
 export { activateNativeBrowse } from './navigation';
 export default {
   id: '@ohif/extension-nifti',
-  preRegistration({ appConfig }) {
+  preRegistration({ appConfig, servicesManager }) {
     registerNifti(appConfig);
     attachMaskEvents();
+    installAnatomyReadOnlyGuard(servicesManager);
     if (appConfig.enableNiftiViewing && !appConfig.dataSources.some(s => s.sourceName === 'nifti')) {
       appConfig.dataSources.push({ namespace: '@ohif/extension-nifti.dataSourcesModule.nifti', sourceName: 'nifti', configuration: { friendlyName: 'Native NIfTI' } });
     }

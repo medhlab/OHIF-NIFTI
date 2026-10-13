@@ -12,7 +12,7 @@ export function createDataSource(commandsManager) {
         const id = query.get('sourceId');
         // Route refreshed/server links through the cancellable progress UI.
         commandsManager.runCommand('navigateHistory', {
-          to: id ? '/nifti?sourceId=' + encodeURIComponent(id) + (query.get('maskIds') ? '&maskIds=' + encodeURIComponent(query.get('maskIds')) : '') + (query.get('manifestId') ? '&manifestId=' + encodeURIComponent(query.get('manifestId')) + '&caseId=' + encodeURIComponent(query.get('caseId') || '') : '') : '/nifti?error=local-unavailable',
+          to: id ? '/nifti?sourceId=' + encodeURIComponent(id) + (query.get('annotationCaseId') ? '&annotationCaseId=' + encodeURIComponent(query.get('annotationCaseId')) : '') + (query.get('maskIds') ? '&maskIds=' + encodeURIComponent(query.get('maskIds')) : '') + (query.get('manifestId') ? '&manifestId=' + encodeURIComponent(query.get('manifestId')) + '&caseId=' + encodeURIComponent(query.get('caseId') || '') : '') : '/nifti?error=local-unavailable',
           options: { replace: true },
         });
       }

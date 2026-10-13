@@ -16,6 +16,7 @@ import {
 } from 'lucide-react';
 import { toolboxState } from '../../default/src/stores/toolboxState';
 import './annotation-tools.css';
+import { activeAnatomyReadOnly } from './readonly';
 
 const labels = {
   Probe2: '点提示',
@@ -45,6 +46,7 @@ const settingLabels = {
 export default function AnnotationTools({ beforeAI, enableAI, enableEditing, sourceKey }) {
   const { servicesManager } = useSystem();
   const { uiNotificationService } = servicesManager.services;
+  const anatomyReadOnly = activeAnatomyReadOnly(servicesManager);
   const ai = useToolbar({ buttonSection: 'aiToolBoxSection' });
   const primary = useToolbar({ buttonSection: 'primary' });
   const brush = useToolbar({ buttonSection: 'brushToolsSection' });
@@ -121,7 +123,7 @@ export default function AnnotationTools({ beforeAI, enableAI, enableEditing, sou
     const button = [...ai.toolbarButtons, ...manualTools, ...utilities.toolbarButtons].find(
       b => b.id === id
     );
-    if (!button || button.componentProps.disabled || (nextMode === 'ai' && locked)) return;
+    if (activeAnatomyReadOnly(servicesManager) || !button || button.componentProps.disabled || (nextMode === 'ai' && locked)) return;
     if ([...aiTools, ...manualTools].some(b => b.id === id) && button.componentProps.isActive) {
       browse();
       return;
@@ -148,7 +150,7 @@ export default function AnnotationTools({ beforeAI, enableAI, enableEditing, sou
   };
   const renderTool = (tool, action = false) => {
     const props = tool.componentProps;
-    const disabled = props.disabled || (mode === 'ai' && (locked || pending));
+    const disabled = anatomyReadOnly || props.disabled || (mode === 'ai' && (locked || pending));
     return (
       <button
         key={tool.id}
@@ -159,7 +161,7 @@ export default function AnnotationTools({ beforeAI, enableAI, enableEditing, sou
         disabled={disabled}
         title={
           disabled
-            ? props.disabledText || (locked ? '请先解锁 AI 提示' : '正在准备原图')
+            ? anatomyReadOnly ? '结构辅助图层只读，请选择病灶后编辑' : props.disabledText || (locked ? '请先解锁 AI 提示' : '正在准备原图')
             : !action && props.isActive
               ? '再次点击返回浏览'
             : props.tooltip || props.label

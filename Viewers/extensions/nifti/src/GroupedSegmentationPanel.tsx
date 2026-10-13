@@ -7,6 +7,7 @@ import { createPresentationController, targetPresentation, scenePresentation } f
 import { maskLocation } from './maskLocation';
 import { getWorkspace, selectFinding, useWorkspace } from './workspace';
 import './segmentation-panel.css';
+import { activateNativeBrowse } from './navigation';
 
 const smallButton = 'seg-action';
 function IconAction({ label, icon: Icon, onClick, disabled = false, pressed = undefined }) {
@@ -44,6 +45,7 @@ export default function GroupedSegmentationPanel({ source, servicesManager, comm
     const viewportIds = service.getViewportIdsWithSegmentation(mask.segmentationId);
     for (const vp of viewportIds) service.setActiveSegmentation(vp, mask.segmentationId);
     service.setActiveSegment(mask.segmentationId, 1);
+    if (mask.anatomyReadOnly || mask.saved?.anatomyReadOnly) activateNativeBrowse(servicesManager);
     presenter.apply();
     update(n => n + 1);
     const location = maskLocation(source, mask);
