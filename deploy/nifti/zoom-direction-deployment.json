@@ -1,0 +1,45 @@
+{
+  "commit": "9da5928cc8605b84b955cfb33ee106e57cf245b0",
+  "deployedAt": "2026-10-13T07:32:31.358213+00:00",
+  "frontendImage": "ohif-nifti-rtx4500-viewer:zoom-9da5928",
+  "frontendImageID": "sha256:a9870060f1f872f8d667baaa570b4349b8b76640245d2913c6ffa2bcbadf3f10",
+  "backend": {
+    "id": "ef6c3d6741afd9310bcb87f9f52319182eda8def5e05e89d1316ce8aa5277541",
+    "image": "sha256:9f6403301a129f8ea5504456131d5c9f8aa5715c9d194552a1b3571a980beaf6",
+    "startedAt": "2026-10-13T06:48:44.64109886Z"
+  },
+  "health": {
+    "status": "ok",
+    "models": {
+      "nninteractive": {
+        "state": "ready"
+      },
+      "voxtell": {
+        "state": "disabled"
+      },
+      "sam2": {
+        "state": "disabled"
+      },
+      "medsam2": {
+        "state": "disabled"
+      },
+      "sam3": {
+        "state": "disabled"
+      },
+      "medgemma": {
+        "state": "disabled"
+      }
+    }
+  },
+  "previousSource": "/home/ant/projects/OHIF-NIFTI/releases/nninteractive-20261013/source",
+  "source": "/home/ant/projects/OHIF-NIFTI/releases/zoom-direction-20261013/source",
+  "frontendOnly": true,
+  "stateDirectory": "/home/ant/projects/OHIF-NIFTI/state",
+  "rollback": {
+    "scope": "viewer only; preserve backend and state",
+    "command": "python3 /home/ant/projects/OHIF-NIFTI/releases/zoom-direction-20261013/release.py rollback"
+  },
+  "candidatePassed": true,
+  "productionPassed": true,
+  "backendUnchanged": true
+}

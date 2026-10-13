@@ -1,6 +1,6 @@
 # 第一版部署与真实 CT 验收
 
-当前版本已启用 nnInteractive，前后端均为 d5f00fe；最新验证和回退见 [nnInteractive 部署记录](NNINTERACTIVE_DEPLOYMENT.md)。下面保留手工编辑与首版的历史部署。
+当前版本已启用 nnInteractive，前端 9da5928、后端 d5f00fe；最新前端验证和回退见 [缩放方向验收](ZOOM_DIRECTION_FIX.md)，模型启用验收见 [nnInteractive 部署记录](NNINTERACTIVE_DEPLOYMENT.md)。下面保留手工编辑与首版的历史部署。
 
 ## 手工编辑入口修复（2026-10-13，13:27 Asia/Shanghai）
 
