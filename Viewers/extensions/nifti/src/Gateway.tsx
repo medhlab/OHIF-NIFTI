@@ -37,6 +37,8 @@ export default function Gateway() {
     try { await action(controller.signal); } catch (e) { if (e.name !== 'AbortError') setError(e.message); }
     finally { if (task.current === controller) { setBusy(false); setStatus(''); } }
   };
+  const annotationQuery = id => query.get('sourceId') === id && query.get('annotationCaseId')
+    ? `&annotationCaseId=${encodeURIComponent(query.get('annotationCaseId'))}` : '';
   const open = async (file: File, stored?, signal?, maskIds: string[] = [], warnings: string[] = []) => {
     for (const key of [...sources.keys()]) releaseSource(key);
     const source = await openLocal(file, { unit: stored?.unit || unit || undefined, modality: stored?.modality || modality }, signal, p => setStatus(`解析原图 ${Math.round(p * 100)}%`));
@@ -45,7 +47,7 @@ export default function Gateway() {
       Object.assign(source.descriptor, stored);
     }
     source.pendingMaskIds = maskIds; source.importWarnings = warnings;
-    navigate(`/nifti-viewer/nifti?source=${encodeURIComponent(source.sourceKey)}${stored ? '&sourceId=' + stored.sourceId : ''}${maskIds.length ? '&maskIds=' + maskIds.join(',') : ''}${workspaceQuery()}`);
+    navigate(`/nifti-viewer/nifti?source=${encodeURIComponent(source.sourceKey)}${stored ? '&sourceId=' + stored.sourceId : ''}${maskIds.length ? '&maskIds=' + maskIds.join(',') : ''}${workspaceQuery()}${annotationQuery(stored?.sourceId)}`);
   };
   const openStored = async (id, signal, maskIds = [], warnings = []) => {
     setStatus('读取服务器原图…');
@@ -57,7 +59,7 @@ export default function Gateway() {
       for (const key of [...sources.keys()]) releaseSource(key);
       const source = openStreaming(metadata, transport);
       source.pendingMaskIds = maskIds; source.importWarnings = warnings;
-      navigate(`/nifti-viewer/nifti?source=${encodeURIComponent(source.sourceKey)}&sourceId=${id}${maskIds.length ? '&maskIds=' + maskIds.join(',') : ''}${workspaceQuery()}`);
+      navigate(`/nifti-viewer/nifti?source=${encodeURIComponent(source.sourceKey)}&sourceId=${id}${maskIds.length ? '&maskIds=' + maskIds.join(',') : ''}${workspaceQuery()}${annotationQuery(id)}`);
       return;
     }
     const { descriptor, file } = await downloadSource(id, signal, p => setStatus(`下载原图 ${Math.round(p * 100)}%`));

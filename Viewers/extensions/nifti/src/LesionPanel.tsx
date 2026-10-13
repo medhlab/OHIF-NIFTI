@@ -75,6 +75,7 @@ export default function LesionPanel() {
     // A direct-source link can restore the same explicitly registered annotation Case.
     if (!w.manifest?.id) {
       const url = new URL(window.location.href); url.searchParams.set('annotationCaseId', body.caseId);
+      url.searchParams.set('sourceId', target.descriptor.sourceId);
       window.history.replaceState(window.history.state, '', url);
     }
     await refresh(target);
