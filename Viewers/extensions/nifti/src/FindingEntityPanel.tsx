@@ -1,3 +1,4 @@
+import { entitiesForFinding } from './entityLabels.mjs';
 import React, { useEffect, useRef, useState } from 'react';
 import { useSystem } from '@ohif/core';
 import { Crosshair, Trash2, Pencil } from 'lucide-react';
@@ -252,7 +253,9 @@ export default function FindingEntityPanel() {
       );
       const state = await mutate(target, {
         operation: 'entity',
-        name: observation?.term || `Entity ${target.annotationCase.entities.length + 1}`,
+        name:
+          observation?.term ||
+          `Entity ${entitiesForFinding(target.annotationCase, findingId).length + 1}`,
         findingIds: findingId ? [findingId] : [],
         ...(observationId ? { observationIds: [observationId] } : {}),
       });

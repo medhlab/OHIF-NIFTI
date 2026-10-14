@@ -1,3 +1,4 @@
+import { entityLabels } from './entityLabels.mjs';
 /** Describe the selected annotation without treating a Finding or Entity as a lesion. */
 export function describeAnnotationTarget(context, mask, categories: Record<string, string>) {
   const readOnly = mask?.anatomyReadOnly || mask?.saved?.anatomyReadOnly;
@@ -23,7 +24,7 @@ export function describeAnnotationTarget(context, mask, categories: Record<strin
   const title = readOnly
     ? `只读结构 · ${mask.label}`
     : entity
-      ? `E${context.entities.indexOf(entity) + 1} · ${entity.name}`
+      ? `${entityLabels(context, entity.id)} · ${entity.name}`
       : mask
         ? `未绑定 Entity · ${mask.label}`
         : '未选择 Entity';

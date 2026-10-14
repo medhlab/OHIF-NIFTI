@@ -30,14 +30,14 @@ const context = {
 test('a shared Entity displays its linked Finding and observation categories once', () => {
   expect(describeAnnotationTarget(context, { entityId: 'entity' }, categories)).toEqual({
     entityId: 'entity',
-    title: 'E1 · 目标',
+    title: 'F1-E1 / F2-E1 · 目标',
     categoryText: 'A · 类别 A / B · 类别 B',
   });
 });
 test('a reopened saved mask resolves its Entity without a local entityId', () => {
   expect(
     describeAnnotationTarget(context, { saved: { maskId: 'saved-mask' } }, categories).title
-  ).toBe('E1 · 目标');
+  ).toBe('F1-E1 / F2-E1 · 目标');
 });
 test('a structure layer is identified as a read-only auxiliary layer', () => {
   expect(

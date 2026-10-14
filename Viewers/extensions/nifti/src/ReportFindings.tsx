@@ -1,3 +1,4 @@
+import { entityLabel, entityLabels } from './entityLabels.mjs';
 import React, { useEffect, useRef, useState } from 'react';
 import {
   ChevronDown,
@@ -152,7 +153,7 @@ export default function ReportFindings({
     (context.findings.find(f => f.id === selected.findingId) ||
       context.findings.find(f => f.id === activeFinding));
   const entityLinks = entity => context.links.filter(l => l.entityId === entity.id);
-  const entityNumber = entity => context.entities.findIndex(e => e.id === entity.id) + 1;
+  const entityNumber = entity => entityLabels(context, entity.id);
   const renderEntity = (entity, link) => (
     <div
       className="rf-entity"
@@ -166,7 +167,7 @@ export default function ReportFindings({
           disabled={busy}
           onClick={() => onLocateEntity(entity)}
         >
-          <strong>E{entityNumber(entity)}</strong>
+          <strong>{entityLabel(context, entity.id, link.findingId)}</strong>
           <span>{entity.name}</span>
         </button>
         <div
@@ -203,7 +204,7 @@ export default function ReportFindings({
             type="button"
             className="annotation-entity-action annotation-entity-action-unlink"
             title="解除关联"
-            aria-label={`解除 E${entityNumber(entity)} 与 Finding 的关联`}
+            aria-label={`解除 ${entityLabel(context, entity.id, link.findingId)} 与 Finding 的关联`}
             disabled={busy}
             onClick={() => onUnlink(link.id)}
           >
@@ -383,7 +384,7 @@ export default function ReportFindings({
                   key={e.id}
                   value={e.id}
                 >
-                  E{entityNumber(e)} · {e.name}
+                  {entityNumber(e)} · {e.name}
                 </option>
               ))}
             </select>
@@ -612,7 +613,7 @@ export default function ReportFindings({
                             key={e.id}
                             value={e.id}
                           >
-                            E{entityNumber(e)} · {e.name}
+                            {entityNumber(e)} · {e.name}
                           </option>
                         ))}
                       </select>
