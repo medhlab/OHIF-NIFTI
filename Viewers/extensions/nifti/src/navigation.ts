@@ -6,6 +6,8 @@ export function activateNativeBrowse(servicesManager) {
   for (const id of ['default', 'mpr']) {
     const group = toolGroupService.getToolGroup(id);
     if (!group?.hasTool('Pan')) continue;
+    // Match ITK-SNAP: drag up to zoom in, down to zoom out.
+    if (group.hasTool('Zoom')) group.setToolConfiguration('Zoom', { invert: true });
     const active = group.getActivePrimaryMouseButtonTool();
     if (active) {
       group.getToolConfiguration(active)?.disableOnPassive

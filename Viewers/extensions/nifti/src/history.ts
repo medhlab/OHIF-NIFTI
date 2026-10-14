@@ -1,5 +1,6 @@
 import { sources, reserve, release } from './sourceStore';
 import { downloadMask, request } from './api';
+import { annotationRequest, installAnnotationContext } from './annotationClient';
 import { parseInWorker, alignInWorker } from './workerClient';
 import { alignedIndexTransform, currentSource, createMask, isMaskDirty } from './masks';
 
@@ -82,9 +83,10 @@ export async function restoreAnnotation(servicesManager, source, item, latestVer
     progress('保存恢复版本…');
     const response = await request(`/${source.descriptor.sourceId}/masks/${item.maskId}/restore`, {
       method: 'POST', signal, headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ version: item.version, expectedVersion: latestVersion, requestId }),
+      body: JSON.stringify({ version: item.version, expectedVersion: latestVersion, requestId, ...(source.annotationCase && item.entityId ? { annotationCaseId: source.annotationCase.caseId, annotationEntityId: item.entityId, expectedCaseRevision: source.annotationCase.revision } : {}) }),
     });
     committed = (await response.json()).item;
+    if (source.annotationCase) installAnnotationContext(source, await annotationRequest(`/cases/${source.annotationCase.caseId}/context`, undefined, signal));
     release(source.sourceKey + ':restore-allocation');
     await installVersion(servicesManager, source, committed, staged.pixels, signal);
     return committed;

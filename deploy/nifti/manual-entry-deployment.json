@@ -1,0 +1,25 @@
+{
+  "deployedAt": "2026-10-13T05:27:00.134309+00:00",
+  "commit": "b40509990d5ea7d17c91f2a078e3bd76f770e9ec",
+  "frontendCommit": "b40509990d5ea7d17c91f2a078e3bd76f770e9ec",
+  "backendCommit": "9bfe0f10bc9f0ce4a8c5c10255825ed22b1682ec",
+  "frontendOnly": true,
+  "source": "/home/ant/projects/OHIF-NIFTI/releases/annotation-manual-20261013/source",
+  "previousSource": "/home/ant/projects/OHIF-NIFTI/releases/annotation-v1-20261013/source",
+  "previousImages": {
+    "viewer": "sha256:09fd2cc74951c4b7da8dd93d7cb76aed05580646407df2e5040e2d58048127b1",
+    "backend": "sha256:6d57e415bf9db86f1d6c4cf34486b654089bf391183e89b38175237dea437665"
+  },
+  "activeImages": {
+    "viewer": "sha256:4eeff291eb1c5e4a0f115eacfa8eff786ab9dca9447727032ced190fedc8f796",
+    "backend": "sha256:6d57e415bf9db86f1d6c4cf34486b654089bf391183e89b38175237dea437665"
+  },
+  "stateDirectory": "/home/ant/projects/OHIF-NIFTI/state",
+  "rollbackCompose": "/home/ant/projects/OHIF-NIFTI/releases/annotation-manual-20261013/compose.rollback.json",
+  "candidatePassed": true,
+  "productionBrowserSmoke": true,
+  "gpuInference": false,
+  "productionTestMaskSaved": false,
+  "health": true,
+  "verifiedAt": "2026-10-13T05:29:45.083638+00:00"
+}

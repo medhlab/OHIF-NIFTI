@@ -1,0 +1,87 @@
+{
+  "host": {
+    "name": "rtx4500",
+    "tailscaleIP": "100.104.172.26",
+    "sshUser": "ant",
+    "httpsHost": "ant-trx50-aero-d.tailb37712.ts.net"
+  },
+  "root": "/home/ant/projects/OHIF-NIFTI",
+  "source": {
+    "repository": "OHIF-NIFTI",
+    "commit": "ca7cf52cf1b049fdf0a5aa70b74d96dc35ebc1a6",
+    "mode": "unmodified source snapshot without Git history",
+    "backendCommit": "6603691c9b72ca4fe7673463b4eaf261eca3c4fa"
+  },
+  "deployedAt": "2026-10-12",
+  "verification": {
+    "serviceHealth": "passed",
+    "realCTStreamingAndReports": "passed, 25 cases",
+    "browserEditSaveReload": "passed, synthetic test mask v3 to v4",
+    "backendRestartPersistence": "passed",
+    "directWorkbenchReload": "passed via HTTPS, saved v4 restored after reload without JavaScript errors",
+    "httpsExternalAccess": "passed: certificate, default Mac browser connectivity, CT streaming, reports and saved mask reload",
+    "caseSwitchAndPanelControls": "passed: switch CT case and return, current display set only, collapse/reopen unified panel"
+  },
+  "images": {
+    "backend": "sha256:70e3c6305af9f3606c081e27998cf9d18827c4a4dd095f6d5b56a6f89f39c1b2",
+    "viewer": "sha256:d11d262db02374a5bac4628a57fb43b504aa30b16d013c06dd15a454b6f685a1"
+  },
+  "sourceData": {
+    "hostPath": "/media/ant/新加卷1/ct-rate-v2/dataset",
+    "containerPath": "/datasets/ct-rate",
+    "readOnly": true
+  },
+  "stateDirectory": "/home/ant/projects/OHIF-NIFTI/state",
+  "workspace": {
+    "manifestId": "bc1ed805723b4150ad6451bad378d955",
+    "readyCases": 25,
+    "httpURL": "http://100.104.172.26:1026/nifti?manifestId=bc1ed805723b4150ad6451bad378d955",
+    "httpsURL": "https://ant-trx50-aero-d.tailb37712.ts.net/nifti?manifestId=bc1ed805723b4150ad6451bad378d955"
+  },
+  "https": {
+    "status": "enabled, tailnet only",
+    "command": "sudo tailscale serve --bg --https=443 http://127.0.0.1:1026",
+    "macProxyBypass": "Persisted in Clash Verge custom bypass list; all 8 default entries preserved plus exact service hostname"
+  },
+  "frontendBuildPatches": {
+    "onnxBrowserFilenameFallback": "Webpack DefinePlugin resolves __filename to a browser URL instead of Node's undefined global",
+    "immutableContentHashResources": true
+  },
+  "capabilities": {
+    "streaming": true,
+    "manualAnnotation": true,
+    "savedMaskVersions": true,
+    "aiInference": false
+  },
+  "operation": {
+    "workingDirectory": "/home/ant/projects/OHIF-NIFTI/deployment",
+    "start": "docker compose up -d",
+    "stop": "docker compose stop",
+    "status": "docker compose ps",
+    "logs": "docker compose logs --tail=100",
+    "rebuild": "docker compose build"
+  },
+  "dependencies": {
+    "preexistingRuntimeImages": [
+      "monai:latest",
+      "webapp:latest"
+    ],
+    "frontendBuilder": "node:20.18.1-slim",
+    "baseImagesExported": false
+  },
+  "layout": {
+    "source": "../source contains Viewers and monai-label",
+    "state": "../state contains persistent data; preserve across rebuilds",
+    "deployment": "Compose and Dockerfiles are placed together in deployment"
+  },
+  "imageTags": {
+    "viewer": "ohif-nifti-rtx4500-viewer:20261012-ca7cf52",
+    "backend": "ohif-nifti-rtx4500-backend:20261011"
+  },
+  "rollback": {
+    "compose": "compose.rollback-6603691.yml",
+    "source": "/home/ant/projects/OHIF-NIFTI/source-6603691",
+    "viewer": "ohif-nifti-rtx4500-viewer:rollback-6603691",
+    "command": "docker compose -f compose.rollback-6603691.yml up -d --no-deps viewer"
+  }
+}

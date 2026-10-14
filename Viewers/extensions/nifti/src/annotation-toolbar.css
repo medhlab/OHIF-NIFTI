@@ -1,0 +1,226 @@
+.nt-image-info {
+  padding: 16px;
+  color: #eee8f5;
+}
+.nt-image-info h2 {
+  font-size: 16px;
+  font-weight: 600;
+  margin-bottom: 14px;
+}
+.nt-image-info dl > div {
+  padding: 9px 0;
+  border-bottom: 1px solid #302638;
+}
+.nt-image-info dt {
+  color: #aaa0b9;
+  font-size: 12px;
+  margin-bottom: 3px;
+}
+.nt-image-info dd {
+  font-size: 14px;
+  overflow-wrap: anywhere;
+}
+.nt-image-info details {
+  margin-top: 14px;
+}
+.nt-image-info pre {
+  white-space: pre-wrap;
+  font-size: 12px;
+  margin-top: 10px;
+}
+.nt-image-info [role='alert'] {
+  color: #edc996;
+  margin-top: 12px;
+}
+
+/* Annotation icons occupy the same OHIF header row and use its Button/ToolButton. */
+.nt-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex-wrap: nowrap;
+  flex-shrink: 0;
+  color: var(--wb-text);
+}
+.nt-toolbar [hidden] {
+  display: none !important;
+}
+.nt-toolbar .annotation-tools {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  border-radius: 0;
+}
+.nt-toolbar .at-heading {
+  width: 40px;
+  height: 40px;
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+.nt-icon-wrap {
+  display: inline-flex;
+  position: relative;
+}
+.nt-icon {
+  position: relative;
+  border-radius: 8px;
+}
+.nt-badge {
+  position: absolute;
+  right: 1px;
+  top: 1px;
+  padding: 0 3px;
+  min-width: 13px;
+  background: #7353a0;
+  border-radius: 6px;
+  font: 10px/13px sans-serif;
+  color: white;
+}
+.nt-popover {
+  position: fixed;
+  top: 58px;
+  left: max(14px, calc(50vw - 235px));
+  width: min(470px, calc(100vw - 28px));
+  max-height: calc(100dvh - 72px);
+  overflow: auto;
+  padding: 14px;
+  background: #101014;
+  border: 1px solid #59456f;
+  border-radius: 12px;
+  box-shadow: 0 16px 40px #000b;
+  z-index: 100;
+  --background: 240 11% 7%;
+  --foreground: 258 38% 95%;
+  --muted: 260 15% 12%;
+  --muted-foreground: 261 21% 73%;
+  --primary: 263 100% 85%;
+  --popover: 240 11% 7%;
+  --accent: 264 37% 29%;
+}
+.nt-toolbar .at-body:not([hidden]) {
+  margin-top: 0;
+}
+.nt-popover h3 {
+  font-size: 15px;
+  font-weight: 600;
+  margin: 0 0 10px;
+}
+.nt-popover p {
+  font-size: 12px;
+  color: #b9a9cc;
+  margin: 8px 0;
+  overflow-wrap: anywhere;
+}
+.nt-file-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.nt-file-menu a {
+  color: #cbb4ff;
+}
+.nt-file-menu > div[aria-label] > button {
+  padding: 5px 8px;
+  border: 1px solid #514266;
+  border-radius: 5px;
+  margin: 4px;
+}
+.nt-layer-menu {
+  left: auto;
+  right: 14px;
+  width: min(510px, calc(100vw - 28px));
+}
+.nt-layer-menu .nifti-segments,
+.nt-layer-menu .annotation-panel {
+  margin: 0;
+  padding: 6px;
+}
+#nifti-annotation-context {
+  padding: 9px 14px 6px;
+  background: var(--wb-panel);
+}
+.nt-target {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  color: var(--wb-text);
+  font:
+    13px/1.4 Inter,
+    'Microsoft YaHei',
+    sans-serif;
+  min-width: 0;
+}
+.nt-target strong {
+  color: #e4d2ff;
+  font-size: 14px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.nt-target span {
+  color: #80d9c7;
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+.nt-status {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  color: #b9a9cc;
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+.nt-status [role='alert'] {
+  color: #ffb7b7;
+}
+.nt-status > .nt-icon-wrap button {
+  height: 24px;
+  width: 24px;
+}
+body.nifti-case-switching .nt-toolbar {
+  pointer-events: none;
+  opacity: 0.6;
+}
+
+.nt-overlay {
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+}
+.nt-overlay .at-body:not([hidden]) {
+  margin-top: 0;
+}
+
+body.nifti-case-switching .nt-popover {
+  pointer-events: none;
+  opacity: 0.6;
+}
+
+.nt-editing-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 4px;
+}
+.nt-editing-heading b {
+  font-size: 12px;
+  color: #aab0c4;
+}
+.nt-target[data-editing='true'] .nt-editing-heading b {
+  color: #80d9c7;
+}
+.nt-editing-heading button {
+  border: 1px solid #806da5;
+  border-radius: 4px;
+  padding: 3px 8px;
+  color: #e4d2ff;
+  font-size: 12px;
+}

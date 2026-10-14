@@ -25,6 +25,7 @@ from fastapi import APIRouter, File, Form, HTTPException, Query, UploadFile
 from fastapi.responses import FileResponse, Response
 from starlette.background import BackgroundTask
 from pydantic import BaseModel, Field
+from monailabel.utils.others import annotation_domain
 from monailabel.utils.others.nifti_manifest import import_roots, resolve_image, parse_manifest
 from monailabel.utils.others.nifti_groups import ensure_groups, with_group, group_for, assign_group, validate_group, group_name
 from fastapi.responses import StreamingResponse
@@ -240,13 +241,23 @@ def checked_id(value):
     return value
 
 
+def runtime_source_descriptor(meta):
+    # Capabilities belong to the running deployment, not the original upload.
+    # Keep stored image metadata and identity unchanged when AI is enabled later.
+    return meta | {'capabilities': (meta.get('capabilities') or {}) | {
+        'ai': os.environ.get('ENABLE_NIFTI_AI', 'false').lower() == 'true',
+        'nnSeedEncodings': ['raw', 'gzip'],
+        'maskEncodings': ['raw', 'gzip'],
+    }}
+
+
 def get_source(source_id):
     checked_id(source_id)
     with database() as db:
         row = db.execute('SELECT metadata FROM sources WHERE id=?', (source_id,)).fetchone()
     if not row:
         raise HTTPException(404, 'NIfTI source not found.')
-    return json.loads(row['metadata'])
+    return runtime_source_descriptor(json.loads(row['metadata']))
 
 
 def source_path(source_id, meta=None):
@@ -322,7 +333,7 @@ def upload_source(file: UploadFile = File(...), unit: str = Form(None), modality
             db.execute('BEGIN IMMEDIATE')
             existing = db.execute('SELECT metadata FROM sources WHERE hash=?', (meta['contentHash'],)).fetchone()
             if existing:
-                return json.loads(existing['metadata'])
+                return runtime_source_descriptor(json.loads(existing['metadata']))
             identity = uuid.uuid4().hex
             meta.update(sourceType='nifti', sourceId=identity, name=name(file.filename), modality=modality,
                         created=now(), provenance={'originalName': name(file.filename), 'transforms': []},
@@ -339,7 +350,7 @@ def upload_source(file: UploadFile = File(...), unit: str = Form(None), modality
             except Exception:
                 shutil.rmtree(final)
                 raise
-        return meta
+        return runtime_source_descriptor(meta)
 
 
 @router.get('')
@@ -348,7 +359,7 @@ def list_sources(offset: int = Query(0, ge=0), limit: int = Query(50, ge=1, le=1
     with database() as db:
         rows = db.execute('SELECT metadata FROM sources ORDER BY created DESC LIMIT ? OFFSET ?', (limit, offset)).fetchall()
         total = db.execute('SELECT count(*) FROM sources').fetchone()[0]
-    return {'items': [json.loads(row['metadata']) for row in rows], 'total': total, 'offset': offset, 'limit': limit}
+    return {'items': [runtime_source_descriptor(json.loads(row['metadata'])) for row in rows], 'total': total, 'offset': offset, 'limit': limit}
 
 
 @router.get('/{source_id}/metadata')
@@ -450,7 +461,14 @@ def mask_history(source_id: str, offset: int = Query(0, ge=0), limit: int = Quer
 @router.post('/{source_id}/masks')
 def save_masks(source_id: str, file: UploadFile = File(...), label: str = Form('Mask'),
                maskId: str = Form(None), expectedVersion: int = Form(0), raw: bool = Form(False),
-               labelOnly: bool = Form(False), geometryHash: str = Form(None), provenance: str = Form('{}')):
+               labelOnly: bool = Form(False), geometryHash: str = Form(None), provenance: str = Form('{}'),
+               annotationCaseId: str = Form(None), annotationEntityId: str = Form(None),
+               expectedCaseRevision: int = Form(None), annotationRequestKey: str = Form(None), anatomyCaseId: str = Form(None)):
+    # Internal callers must not mistake FastAPI Form defaults for real values.
+    if not isinstance(annotationCaseId, str): annotationCaseId = None
+    if not isinstance(annotationEntityId, str): annotationEntityId = None
+    if not isinstance(annotationRequestKey, str): annotationRequestKey = None
+    if not isinstance(anatomyCaseId, str): anatomyCaseId = None
     enabled()
     enabled('ENABLE_NIFTI_EDITING')
     source = get_source(source_id)
@@ -481,11 +499,13 @@ def save_masks(source_id: str, file: UploadFile = File(...), label: str = Form('
         staged = stage_upload(file, Path(temp))
         transform = np.eye(4, dtype=int).tolist()
         if raw:
-            if staged.stat().st_size != source['count']:
-                raise HTTPException(422, 'Binary seed byte length differs from source.')
-            data = np.fromfile(staged, dtype=np.uint8).reshape(tuple(reversed(source['dimensions'])))
-            if (data > 1).any():
-                raise HTTPException(422, 'Raw masks must be binary.')
+            # A binary 0/1 grid cannot begin with gzip magic. Old raw clients remain valid.
+            from monailabel.utils.others.nifti_context import read_seed
+            shape = tuple(reversed(source['dimensions']))
+            with staged.open('rb') as stream:
+                compressed = stream.read(2) == b'\x1f\x8b'
+                stream.seek(0)
+                data = read_seed(stream, shape, list(range(shape[0])), 'gzip' if compressed else 'raw')
         else:
             mask_meta, data = read_nifti(staged, source['unit'], mask=True)
             data, transform = align_mask(data, mask_meta, source)
@@ -503,6 +523,35 @@ def save_masks(source_id: str, file: UploadFile = File(...), label: str = Form('
         try:
             with database() as db:
                 db.execute('BEGIN IMMEDIATE')
+                annotation_domain.schema(db)
+                digest = None
+                if annotationCaseId and annotationRequestKey:
+                    request_hash = hashlib.sha256(json.dumps([expectedCaseRevision, expectedVersion, label, provenance, labelOnly], ensure_ascii=False).encode())
+                    request_hash.update(memoryview(np.ascontiguousarray(data)))
+                    digest = request_hash.hexdigest()
+                if annotationCaseId and annotationRequestKey:
+                    prior_request = db.execute('SELECT digest,response FROM annotation_requests WHERE case_id=? AND key=?', (annotationCaseId, annotationRequestKey)).fetchone()
+                    if prior_request:
+                        if prior_request[0] != digest:
+                            annotation_domain.fail('IDEMPOTENCY_KEY_REUSED', '保存请求标识被用于不同内容。', 409)
+                        return json.loads(prior_request[1])
+                annotation_case = annotation_domain.validate_mask_write(db, source_id, maskId, annotationCaseId, annotationEntityId, expectedCaseRevision)
+                if annotation_case and len(values) != 1:
+                    annotation_domain.fail('BINARY_MASK_REQUIRED', '一个病灶只允许一份二值 mask。')
+                anatomy_case = annotation_domain.read(db, anatomyCaseId) if anatomyCaseId else None
+                anatomy_layer = None
+                if anatomy_case:
+                    if anatomy_case['sourceId'] != source_id or maskId:
+                        annotation_domain.fail('REFERENCE_CASE_MISMATCH', '结构图层 CT 不匹配。')
+                    labels = provenance_data.get('anatomyLabels', {})
+                    if any(str(int(v)) not in labels for v in values):
+                        annotation_domain.fail('INVALID_LABEL_MAP', '标签映射未覆盖文件中的所有非零值。')
+                    anatomy_layer = {'id': annotation_domain.identity(), 'name': 'TotalSegmentator 结构', 'maskIds': [], 'labelMap': labels,
+                                     'modelVersion': provenance_data.get('modelVersion', 'unknown'), 'geometryHash': source['geometryHash']}
+                if maskId:
+                    existing_meta = db.execute('SELECT metadata FROM masks WHERE source=? AND id=? ORDER BY version DESC LIMIT 1', (source_id, maskId)).fetchone()
+                    if existing_meta and json.loads(existing_meta[0]).get('anatomyReadOnly'):
+                        annotation_domain.fail('READ_ONLY_ANATOMY', '解剖辅助图层不可编辑。', 409)
                 ensure_groups(db, source_id)
                 inherited_group = group_for(db, source_id, derived_from['maskId']) if derived_from else None
                 batch_group = requested_group or inherited_group or {
@@ -541,9 +590,22 @@ def save_masks(source_id: str, file: UploadFile = File(...), label: str = Form('
                         record['displayColor'] = display_color
                     if derived_from is not None and not previous:
                         record['derivedFrom'] = derived_from
+                    if anatomy_layer:
+                        record['anatomyReadOnly'] = True
+                        record['anatomyLayerId'] = anatomy_layer['id']
+                        record['name'] = anatomy_layer['labelMap'][str(int(value))]
+                        anatomy_layer['maskIds'].append(mid)
+                    if annotation_case:
+                        record['parentVersion'] = previous or None
+                        record['voxelCount'] = int(np.count_nonzero(data == value))
+                        record['voxelHash'] = hashlib.sha256((data == value).astype(np.uint8).tobytes()).hexdigest()
+                        content_changed = not previous or any(prior.get(field) != record.get(field) for field in ('voxelHash', 'name', 'labelOnly'))
+                        annotation_domain.bind_mask(db, annotation_case, annotationEntityId, record, bump=content_changed)
                     stage_dir = Path(temp) / mid
                     stage_dir.mkdir()
                     write_mask(stage_dir / 'mask.nii.gz', (data == value).astype(np.uint8), source)
+                    if annotation_case:
+                        record['fileSha256'] = hashlib.sha256((stage_dir / 'mask.nii.gz').read_bytes()).hexdigest()
                     (stage_dir / 'metadata.json').write_text(json.dumps(record), encoding='utf-8')
                     for file_path in stage_dir.iterdir():
                         with open(file_path, 'r+b') as persisted:
@@ -557,12 +619,17 @@ def save_masks(source_id: str, file: UploadFile = File(...), label: str = Form('
                     committed.append(target)
                     db.execute('INSERT INTO masks VALUES (?,?,?,?,?)', (source_id, mid, version, json.dumps(record), record['created']))
                     results.append(record)
+                if anatomy_layer:
+                    anatomy_case['anatomyLayers'].append(anatomy_layer)
+                    annotation_domain.persist(db, anatomy_case, bump=False)
+                if annotation_case and annotationRequestKey:
+                    db.execute('INSERT INTO annotation_requests VALUES (?,?,?,?)', (annotationCaseId, annotationRequestKey, digest, json.dumps({'items': results, 'caseRevision': annotation_case['revision']})))
                 db.commit()
         except Exception:
             for path in committed:
                 shutil.rmtree(path)
             raise
-        return {'items': results}
+        return dict(items=results, **({'caseRevision': annotation_case['revision']} if annotation_case else {}))
 
 
 def mask_record(source_id, mask_id, version=None):
@@ -590,6 +657,9 @@ class RestoreMask(BaseModel):
     version: int = Field(gt=0, strict=True)
     expectedVersion: int = Field(gt=0, strict=True)
     requestId: str = Field(pattern=r'^[a-f0-9-]{32,36}$')
+    annotationCaseId: str | None = None
+    annotationEntityId: str | None = None
+    expectedCaseRevision: int | None = None
 
 
 @router.post('/{source_id}/masks/{mask_id}/restore')
@@ -598,6 +668,8 @@ def restore_mask(source_id: str, mask_id: str, operation: RestoreMask):
     enabled()
     enabled('ENABLE_NIFTI_EDITING')
     chosen, original = mask_record(source_id, mask_id, operation.version)
+    if chosen.get('anatomyReadOnly'):
+        annotation_domain.fail('READ_ONLY_ANATOMY', '解剖辅助图层不可恢复或编辑。', 409)
     target = None
     with work(), tempfile.TemporaryDirectory(prefix='.restore-', dir=root()) as temp:
         try:
@@ -611,6 +683,7 @@ def restore_mask(source_id: str, mask_id: str, operation: RestoreMask):
                     record = json.loads(db.execute('SELECT metadata FROM masks WHERE source=? AND id=? AND version=?',
                                         (source_id, mask_id, repeated['version'])).fetchone()[0])
                     return {'item': with_group(db, source_id, record), 'replayed': True}
+                annotation_case = annotation_domain.validate_mask_write(db, source_id, mask_id, operation.annotationCaseId, operation.annotationEntityId, operation.expectedCaseRevision)
                 latest = json.loads(db.execute('SELECT metadata FROM masks WHERE source=? AND id=? ORDER BY version DESC LIMIT 1',
                                    (source_id, mask_id)).fetchone()[0])
                 if latest['version'] != operation.expectedVersion:
@@ -625,6 +698,8 @@ def restore_mask(source_id: str, mask_id: str, operation: RestoreMask):
                 # Copy lineage belongs to the annotation, not the selected point in time.
                 if 'derivedFrom' in latest:
                     record['derivedFrom'] = latest['derivedFrom']
+                if annotation_case:
+                    annotation_domain.bind_mask(db, annotation_case, operation.annotationEntityId, record)
                 stage = Path(temp) / 'version'
                 stage.mkdir()
                 shutil.copyfile(original, stage / 'mask.nii.gz')
@@ -688,11 +763,17 @@ def infer_native(source_id: str, params: str = Form(...), nn_seed: UploadFile = 
     context = request_data.get('nn_context')
     shape, mask_order, prompt_order = validate_context(context, source)
     validate_prompts(request_data, prompt_order, shape)
+    lock_started = time.monotonic()
+    timings = {}
     with work('infer'), NN_SESSION_LOCK:
-        seed = read_seed(nn_seed.file if nn_seed else None, shape, mask_order)
+        timings['queue'] = time.monotonic() - lock_started
+        seed_started = time.monotonic()
+        seed = read_seed(nn_seed.file if nn_seed else None, shape, mask_order, request_data.get('nn_seed_encoding', 'raw'))
+        timings['seed'] = time.monotonic() - seed_started
         model_started = time.monotonic()
         session = get_nn_session()
-        logger.info('nifti operation=model_session elapsed_seconds=%.3f', time.monotonic() - model_started)
+        timings['model'] = time.monotonic() - model_started
+        logger.info('nifti operation=model_session elapsed_seconds=%.3f', timings['model'])
         started = time.monotonic()
         try:
             identity = 'native-nifti:' + source_id + ':' + source['geometryHash']
@@ -700,8 +781,12 @@ def infer_native(source_id: str, params: str = Form(...), nn_seed: UploadFile = 
                 _, image = read_nifti(source_path(source_id, source), source['unit'])
                 prepare_nn_image(session, identity, image[None])
             # Include authoritative source identity in the session key, not the client study alias.
+            timings['image'] = time.monotonic() - started
             binding_context = context | {'seriesUID': identity}
+            phase_started = time.monotonic()
             bind_context(session, binding_context, seed)
+            timings['binding'] = time.monotonic() - phase_started
+            phase_started = time.monotonic()
             for sign, include in [('pos', True), ('neg', False)]:
                 for point in request_data.get(sign + '_points', []):
                     session.add_point_interaction(tuple(point[::-1]), include_interaction=include)
@@ -724,6 +809,8 @@ def infer_native(source_id: str, params: str = Form(...), nn_seed: UploadFile = 
                         prompt_mask[coords[:, 2], coords[:, 1], coords[:, 0]] = 1
                         fn = session.add_lasso_interaction if kind == 'lassos' else session.add_scribble_interaction
                         fn(prompt_mask, include_interaction=include)
+            timings['prediction'] = time.monotonic() - phase_started
+            phase_started = time.monotonic()
             prediction = session.target_buffer
             if hasattr(prediction, 'detach'):
                 prediction = prediction.detach().cpu().numpy()
@@ -731,6 +818,7 @@ def infer_native(source_id: str, params: str = Form(...), nn_seed: UploadFile = 
             if list(prediction.shape) != shape or not np.isin(prediction, [0, 1]).all():
                 raise HTTPException(502, 'AI returned an invalid binary grid.')
             result = np.ascontiguousarray(prediction[mask_order], dtype=np.uint8).tobytes()
+            timings['result'] = time.monotonic() - phase_started
             echo = finish_context(session, binding_context) | {
                 'seriesUID': context['seriesUID'], 'sourceId': source_id, 'sourceType': 'nifti',
                 'geometryHash': source['geometryHash'],
@@ -740,8 +828,10 @@ def infer_native(source_id: str, params: str = Form(...), nn_seed: UploadFile = 
             raise
     boundary = 'nifti-' + uuid.uuid4().hex
     meta = json.dumps({'nn_context': echo, 'mask_shape': shape, 'flipped': False,
-                       'nninter_elapsed': round(time.monotonic() - started, 3)})
+                       'nninter_elapsed': round(time.monotonic() - started, 3),
+                       'nn_timings': {key: round(value, 4) for key, value in timings.items()}})
     prefix = (f'--{boundary}\r\nContent-Disposition: form-data; name="meta"\r\nContent-Type: application/json\r\n\r\n{meta}\r\n'
               f'--{boundary}\r\nContent-Disposition: form-data; name="seg"\r\nContent-Type: application/octet-stream\r\n\r\n').encode()
     return StreamingResponse(iter((prefix, result, f'\r\n--{boundary}--\r\n'.encode())),
-                             media_type='multipart/form-data; boundary=' + boundary)
+                             media_type='multipart/form-data; boundary=' + boundary,
+                             headers={'Server-Timing': ', '.join(f'{key};dur={value * 1000:.1f}' for key, value in timings.items())})

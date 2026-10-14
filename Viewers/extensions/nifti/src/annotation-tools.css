@@ -20,39 +20,8 @@
   width: 100%;
   text-align: left;
 }
-.annotation-tools .at-title {
-  font-size: 16px;
-  font-weight: 600;
-  flex: 1;
-}
 .at-body:not([hidden]) {
   margin-top: 14px;
-}
-.at-heading .at-chevron {
-  color: #a79db8;
-  transition: transform 150ms ease;
-}
-.at-heading[aria-expanded='false'] .at-chevron {
-  transform: rotate(-90deg);
-}
-.at-mark {
-  display: grid;
-  place-items: center;
-  width: 30px;
-  height: 30px;
-  border-radius: 9px;
-  background: #6843a22a;
-  color: #cbb4ff;
-}
-.at-current {
-  display: flex;
-  align-items: center;
-  gap: 5px;
-  font-size: 12px;
-  color: #cbb4ff;
-  background: #cbb4ff10;
-  padding: 4px 8px;
-  border-radius: 20px;
 }
 .at-tabs {
   display: flex;
@@ -122,34 +91,6 @@
 .at-lock[aria-pressed='true'] {
   color: #efc38f;
 }
-.at-tools {
-  display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 7px;
-}
-.at-tool {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 8px;
-  padding: 12px 3px;
-  background: #18151e;
-  border: 1px solid #302a38;
-  border-radius: 10px;
-  color: #b9afc9;
-  font-size: 13px;
-  min-width: 0;
-}
-.at-tool svg {
-  width: 23px;
-  height: 23px;
-}
-.at-tool[aria-pressed='true'] {
-  background: linear-gradient(145deg, #46305e, #2a203a);
-  color: #eedfff;
-  border-color: #ad84e3;
-  box-shadow: 0 0 0 1px #ad84e318;
-}
 .annotation-tools button:hover:not(:disabled) {
   filter: brightness(1.2);
 }
@@ -181,27 +122,6 @@
 .at-settings button {
   border-radius: 6px;
 }
-.at-actions {
-  display: flex;
-  gap: 8px;
-  margin-top: 12px;
-}
-.at-action {
-  flex: 1;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 7px;
-  padding: 9px 5px;
-  border: 1px solid #302a38;
-  border-radius: 8px;
-  color: #c5bad5;
-  font-size: 12px;
-}
-.at-action svg {
-  width: 17px;
-  height: 17px;
-}
 .annotation-tools footer {
   display: flex;
   align-items: center;
@@ -220,4 +140,44 @@
   height: 5px;
   border-radius: 50%;
   background: #bc94ee;
+}
+
+.at-prompts {
+  margin-top: 10px;
+  padding: 10px;
+  border: 1px solid #564777;
+  border-radius: 6px;
+  font-size: 13px;
+}
+.at-prompt-heading,
+.at-prompt-row,
+.at-prompt-history {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.at-prompt-heading {
+  justify-content: space-between;
+}
+.at-prompt-row {
+  margin-top: 6px;
+}
+.at-prompt-row > button:first-child {
+  flex: 1;
+  text-align: left;
+}
+.at-prompts button {
+  padding: 4px 6px;
+  border: 1px solid #655487;
+  border-radius: 4px;
+}
+.at-prompts button:disabled {
+  opacity: 0.4;
+}
+.at-prompts small {
+  color: #b3a5c8;
+}
+.at-prompt-history {
+  flex-wrap: wrap;
+  margin: 7px 0;
 }

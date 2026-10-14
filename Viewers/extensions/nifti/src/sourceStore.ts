@@ -5,7 +5,7 @@ import { transformPoint } from './format.mjs';
 import { parseInWorker } from './workerClient';
 import { niftiMemoryLedger } from '../../default/src/utils/niftiMemoryLedger';
 import type { SourceDescriptor } from './types';
-import { createStream, ensureSlice, ensureComplete } from './streaming';
+import { createStream, ensureSlice, ensureComplete, startBackground } from './streaming';
 import { scalarTypes, dtypeName } from './frameCodec.mjs';
 import { releaseBrushPreview } from './releaseBrushPreview.mjs';
 
@@ -15,6 +15,12 @@ export const sources = new Map<string, any>();
 export let config: any = {};
 const metadata = new Map<string, any>();
 const reservations = new Map<string, number>();
+function defaultWindow(descriptor) {
+  // Match OHIF's Lung preset for CT; pixels have already been scaled to HU.
+  return descriptor.modality === 'CT'
+    ? { windowCenter: -600, windowWidth: 1500 }
+    : { windowCenter: (descriptor.min + descriptor.max) / 2, windowWidth: Math.max(1, descriptor.max - descriptor.min) };
+}
 export function reserve(key: string, bytes: number) {
   const used = [...reservations].reduce((sum, [k, n]) => sum + (k === key ? 0 : n), 0);
   if (used + bytes > (config.niftiWorkingSetBytes || 1.5 * 1024 ** 3)) {
@@ -28,6 +34,7 @@ export function memorySnapshot() {
   return { sources: sources.size, images: metadata.size,
     streams: [...sources.values()].filter(s => s.stream).map(s => ({ sourceId: s.descriptor.sourceId,
       loaded: s.stream.loaded.reduce((a, b) => a + b, 0), total: s.stream.loaded.length,
+      backgroundOrigin: s.stream.backgroundOrigin, backgroundLoading: !!s.stream.backgroundCompletion, backgroundPaused: !!s.stream.backgroundPaused,
       pending: s.stream.queue.jobs.size, completing: s.stream.completing, errors: [...s.stream.errors.entries()],
       preparationSeconds: s.stream.descriptor.preparationSeconds, timings: s.stream.timings })),
     bytes: [...reservations.values()].reduce((a, b) => a + b, 0),
@@ -58,7 +65,10 @@ export function registerNifti(appConfig) {
       // Drive the window from the displayed image, including cached slices.
       // A stale loader response or a thumbnail must not move the window.
       niftiOnDisplayed: () => {
-        if (source.stream && !source.stream.disposed && !source.stream.completing && !source.stream.loaded.every(Boolean)) source.stream.queue.prefetch(entry.slice);
+        if (source.stream && !source.stream.disposed && !source.stream.completing && !source.stream.loaded.every(Boolean)) {
+          source.stream.queue.prefetch(entry.slice);
+          startBackground(source, entry.slice);
+        }
       },
       imageQualityStatus: Enums.ImageQualityStatus.FULL_RESOLUTION,
       color: false, rgba: false, numberOfComponents: 1, invert: false,
@@ -66,7 +76,7 @@ export function registerNifti(appConfig) {
       rowPixelSpacing: plane.rowPixelSpacing, columnPixelSpacing: plane.columnPixelSpacing,
       sizeInBytes: pixels.byteLength, voxelManager, getPixelData: () => pixels,
       minPixelValue: d.min, maxPixelValue: d.max,
-      windowCenter: (d.min + d.max) / 2, windowWidth: Math.max(1, d.max - d.min),
+      ...defaultWindow(d),
     };
     })();
     promise.catch(() => setTimeout(() => {
@@ -156,6 +166,7 @@ export function openStreaming(descriptor, transport) {
 
 function populateMetadata(source) {
   const { descriptor: d, sourceKey } = source;
+  const voi = defaultWindow(d);
   const a = d.voxelToLPS;
   const spacing = [0, 1, 2].map(c => Math.hypot(a[0][c], a[1][c], a[2][c]));
   const dirs = [0, 1, 2].map(c => [0, 1, 2].map(r => a[r][c] / spacing[c]));
@@ -175,6 +186,7 @@ function populateMetadata(source) {
       ImagePositionPatient: position, ImageOrientationPatient: [...dirs[0], ...dirs[1]],
       PixelSpacing: [spacing[1], spacing[0]], SliceThickness: spacing[2],
       Modality: d.modality, SeriesNumber: 1, SeriesDescription: d.name,
+      WindowCenter: voi.windowCenter, WindowWidth: voi.windowWidth,
       StudyDescription: d.name, PatientID: 'NIFTI', PatientName: { Alphabetic: d.name },
       SamplesPerPixel: 1, PhotometricInterpretation: 'MONOCHROME2',
       BitsAllocated: source.scalarData.BYTES_PER_ELEMENT * 8,
@@ -196,7 +208,7 @@ function populateMetadata(source) {
       // These are explicitly internal references, never used for DICOM export.
       sopCommonModule: { sopClassUID: INTERNAL_CLASS, sopInstanceUID: instance.SOPInstanceUID, sourceType: 'nifti' },
       modalityLutModule: { rescaleSlope: 1, rescaleIntercept: 0 },
-      voiLutModule: { windowCenter: [(d.min + d.max) / 2], windowWidth: [Math.max(1, d.max - d.min)] },
+      voiLutModule: { windowCenter: [voi.windowCenter], windowWidth: [voi.windowWidth] },
     });
     return instance;
   });

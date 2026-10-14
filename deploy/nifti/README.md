@@ -251,3 +251,11 @@ released its tracked original buffer. Read-only production DICOM browsing also
 passed without saving or changing clinical annotations. Raw measurements,
 screenshots and the consolidated receipt live in
 `release-artifacts/nifti-streaming-20261008`.
+
+## 2026-10-13 lesion v1 acceptance
+
+The isolated rtx4500 release uses CPU only and existing real CT-RATE valid_1_a_2. This is separate from the historical vanilla/GPU test Compose above. Do not run the mutation script against production. The candidate index must start from the production backup without annotation test cases.
+
+Set BASE_URL, CHROME_PATH, PLAYWRIGHT_MODULE, STRUCTURE_FILE and OUTPUT_DIR in the calling environment, then run `node deploy/nifti/lesion-v1-acceptance.cjs`. The source and manifest IDs refer to the existing 25-case acceptance set. The supplied structure fixture must be explicitly synthetic; the fixture generator creates two geometric labels on this CT grid and runs in a Docker container with /datasets/ct-rate read-only and /output writable.
+
+The browser test uses actual mouse selection/painting and real Cornerstone buffers, checks Save All and immutable versions, completion, page reload and a new browser context, anatomy visibility and rejection of forced brush activation. Outputs are JSON and screenshots. `lesion-v1-production-smoke.cjs` checks the formal HTTPS workbench and existing saved v4 without creating lesion annotations; it registers the 25-case worklist. `lesion-v1-verify-files.py` verifies stored NIfTI file/voxel hashes inside the candidate backend. See docs/ANNOTATION_V1_DEPLOYMENT.md for exact deployed commit, artifacts and rollback.

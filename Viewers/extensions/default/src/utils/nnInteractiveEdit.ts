@@ -5,13 +5,18 @@ export type NnTarget = {
   segmentationId: string;
   segmentIndex: number;
   viewportId: string;
+  editingEpoch?: number;
   imageIds: string[];
   referenceImageIds: string[];
   shape: number[];
   slices: any[];
   promptSlices: string[];
   nativeSource?: {
-    sourceId: string; geometryHash: string; maskOrder: number[]; promptOrder: number[];
+    sourceId: string;
+    geometryHash: string;
+    maskOrder: number[];
+    promptOrder: number[];
+    seedEncoding?: 'gzip';
   };
 };
 
@@ -20,21 +25,42 @@ export const targetKey = (t: Pick<NnTarget, 'seriesUID' | 'segmentationId' | 'se
 
 export type NnTicket = { target: NnTarget; generation: number; revision: number; epoch: number };
 type Prompt = { uid: string; kind: string; value: any };
-type Reply = { pixels: Uint8Array; context: any; shape: number[]; elapsed?: number; flipped?: boolean };
+type Reply = {
+  pixels: Uint8Array;
+  context: any;
+  shape: number[];
+  elapsed?: number;
+  flipped?: boolean;
+};
 type Adapter = {
   capture: () => NnTarget;
-  inspect: (target: NnTarget, includeBuffer: boolean) => Promise<{ buffer?: Uint8Array; maskHash: string }>;
+  inspect: (
+    target: NnTarget,
+    includeBuffer: boolean
+  ) => Promise<{ buffer?: Uint8Array; maskHash: string }>;
   prompts: (target: NnTarget, epoch: number) => Prompt[];
   infer: (context: any, seed: Uint8Array | undefined, prompts: Prompt[]) => Promise<Reply>;
   commit: (target: NnTarget, reply: Reply) => { clipped: boolean };
-  retirePrompts: (prompts: Prompt[]) => void;
+  retirePrompts: (prompts: Prompt[], applied?: boolean) => void;
   notify: (message: string, type?: string) => void;
+  retainBaseline?: (target: NnTarget, pixels: Uint8Array) => Promise<void>;
+  releaseBaseline?: (target: NnTarget) => void;
+  invalidatePrompts?: (target: NnTarget) => void;
 };
 
 /** Validate the ENTIRE response before touching any original buffer. */
-export function commitPrediction(slices: ArrayLike<number>[], segmentIndex: number, prediction: Uint8Array) {
-  if (!slices.length || !slices[0].length || slices.some(s => s.length !== slices[0].length) ||
-      prediction.length !== slices.length * slices[0].length || prediction.some(v => v !== 0 && v !== 1)) {
+export function commitPrediction(
+  slices: ArrayLike<number>[],
+  segmentIndex: number,
+  prediction: Uint8Array
+) {
+  if (
+    !slices.length ||
+    !slices[0].length ||
+    slices.some(s => s.length !== slices[0].length) ||
+    prediction.length !== slices.length * slices[0].length ||
+    prediction.some(v => v !== 0 && v !== 1)
+  ) {
     throw new Error('AI 返回的 mask 尺寸或像素格式无效，原 mask 未修改。');
   }
   let offset = 0;
@@ -53,7 +79,10 @@ export function commitPrediction(slices: ArrayLike<number>[], segmentIndex: numb
       }
       const next = prediction[offset] ? segmentIndex : 0;
       if (next === segmentIndex) foreground = true;
-      if (old !== next) { slice[i] = next; modified = true; }
+      if (old !== next) {
+        slice[i] = next;
+        modified = true;
+      }
     }
     if (modified) modifiedSlices.push(z);
     if (foreground) foregroundSlices.push(z);
@@ -63,6 +92,14 @@ export function commitPrediction(slices: ArrayLike<number>[], segmentIndex: numb
 
 export function createNnEditor(adapter: Adapter) {
   const revisions = new Map<string, number>();
+  const baselines = new Map<string, { target: NnTarget; pixels: Uint8Array }>();
+  const replay = new Set<string>();
+  const releaseBase = (key: string) => {
+    const base = baselines.get(key);
+    if (base) adapter.releaseBaseline?.(base.target);
+    baselines.delete(key);
+    replay.delete(key);
+  };
   let generation = 0;
   let epoch = 0;
   let selection = '';
@@ -75,37 +112,64 @@ export function createNnEditor(adapter: Adapter) {
   // Unique across page reloads, without requiring a secure-context crypto API.
   const clientId = `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`;
 
-  function clearSession() { binding = undefined; processed = new Set(); }
+  function clearSession() {
+    binding = undefined;
+    processed = new Set();
+  }
   function observe(): NnTicket | undefined {
     let target: NnTarget | undefined;
-    try { target = adapter.capture(); } catch { /* No editable selected mask. */ }
-    const next = target ? `${target.viewportId}:${targetKey(target)}:${target.imageIds.join('|')}` : '';
+    try {
+      target = adapter.capture();
+    } catch {
+      /* No editable selected mask. */
+    }
+    const next = target
+      ? `${target.viewportId}:${target.editingEpoch || 0}:${targetKey(target)}:${target.imageIds.join('|')}`
+      : '';
     if (selection !== next) {
       selection = next;
       generation++;
       epoch++;
       clearSession();
     }
-    return target ? { target, generation, epoch, revision: revisions.get(target.segmentationId) || 0 } : undefined;
+    return target
+      ? { target, generation, epoch, revision: revisions.get(target.segmentationId) || 0 }
+      : undefined;
   }
   function isCurrent(ticket: NnTicket) {
     const now = observe();
-    return !!now && now.generation === ticket.generation && now.epoch === ticket.epoch &&
-      now.revision === ticket.revision && targetKey(now.target) === targetKey(ticket.target);
+    return (
+      !!now &&
+      now.generation === ticket.generation &&
+      now.epoch === ticket.epoch &&
+      now.revision === ticket.revision &&
+      targetKey(now.target) === targetKey(ticket.target)
+    );
   }
   function changed(segmentationId: string) {
     if (committing) return;
     revisions.set(segmentationId, (revisions.get(segmentationId) || 0) + 1);
+    for (const [key, base] of baselines) {
+      if (base.target.segmentationId === segmentationId) {
+        adapter.invalidatePrompts?.(base.target);
+        releaseBase(key);
+      }
+    }
     const current = observe();
     if (current?.target.segmentationId === segmentationId) {
+      adapter.invalidatePrompts?.(current.target);
       epoch++;
       clearSession();
     }
   }
   function reset() {
     const current = observe();
-    if (!current) { adapter.notify('请先选择一个可编辑的 mask。', 'warning'); return; }
+    if (!current) {
+      adapter.notify('请先选择一个可编辑的 mask。', 'warning');
+      return;
+    }
     adapter.retirePrompts(adapter.prompts(current.target, current.epoch));
+    releaseBase(targetKey(current.target));
     epoch++;
     generation++;
     pending = undefined;
@@ -113,49 +177,134 @@ export function createNnEditor(adapter: Adapter) {
     adapter.notify('AI 交互已重置，当前 mask 保留；下次操作将以当前像素重新开始。', 'info');
   }
 
+  function replacePrompts() {
+    const current = observe();
+    if (!current) return undefined;
+    generation++;
+    epoch++;
+    pending = undefined;
+    clearSession();
+    replay.add(targetKey(current.target));
+    return observe();
+  }
+  function forget(segmentationId: string) {
+    changed(segmentationId);
+    for (const [key, base] of baselines)
+      if (base.target.segmentationId === segmentationId) {
+        adapter.invalidatePrompts?.(base.target);
+        releaseBase(key);
+      }
+  }
+
   async function runOne(queued: NnTicket) {
     // A preceding successful AI commit may have advanced the pixel revision;
     // it does not change the interaction epoch. Brush edits / switches do.
     const current = observe();
-    if (!current || current.generation !== queued.generation || current.epoch !== queued.epoch) return;
+    if (!current || current.generation !== queued.generation || current.epoch !== queued.epoch)
+      return;
     const ticket = current;
     const target = ticket.target;
-    const prompts = adapter.prompts(target, ticket.epoch).filter(p => !processed.has(p.uid));
-    if (!prompts.length) return;
-    const key = targetKey(target);
+    const key = targetKey(target),
+      replaying = replay.has(key);
+    const prompts = adapter
+      .prompts(target, ticket.epoch)
+      .filter(p => replaying || !processed.has(p.uid));
+    if (!prompts.length && !replaying) {
+      if (!processed.size) adapter.notify('请先添加包含或排除提示，再运行 AI。', 'info');
+      return;
+    }
     let seedNeeded = !binding || binding.key !== key || binding.revision !== ticket.revision;
     let snapshot = await adapter.inspect(target, seedNeeded);
-    if (!isCurrent(ticket)) { adapter.notify('目标或笔刷内容已变化，未发送旧 AI 请求。', 'warning'); return; }
+    if (!isCurrent(ticket)) {
+      adapter.notify('目标或笔刷内容已变化，未发送旧 AI 请求。', 'warning');
+      return;
+    }
+    if (!baselines.has(key) && snapshot.buffer && prompts.length) {
+      await adapter.retainBaseline?.(target, snapshot.buffer);
+      if (!isCurrent(ticket)) {
+        adapter.releaseBaseline?.(target);
+        return;
+      }
+      baselines.set(key, { target, pixels: snapshot.buffer });
+    }
+    if (replaying && baselines.has(key))
+      snapshot = { ...snapshot, buffer: baselines.get(key).pixels };
+    if (!isCurrent(ticket)) {
+      adapter.notify('目标或笔刷内容已变化，未发送旧 AI 请求。', 'warning');
+      return;
+    }
     let reply: Reply;
     try {
+      if (!prompts.length && replaying) {
+        if (snapshot.buffer) {
+          committing = true;
+          try {
+            adapter.commit(target, { pixels: snapshot.buffer, shape: target.shape, context: {} });
+          } finally {
+            committing = false;
+          }
+          revisions.set(target.segmentationId, ticket.revision + 1);
+        }
+        replay.delete(key);
+        clearSession();
+        adapter.notify('提示已清空，保留本轮 AI 开始前的人工 mask。', 'success');
+        return;
+      }
       for (let attempt = 0; ; attempt++) {
         const context: Record<string, any> = {
-          version: 1, seriesUID: target.seriesUID, segmentationId: target.segmentationId,
-          segmentIndex: target.segmentIndex, requestId: `${clientId}-${++requestSequence}`,
-          revision: ticket.revision, generation: ticket.generation,
+          version: 1,
+          seriesUID: target.seriesUID,
+          segmentationId: target.segmentationId,
+          segmentIndex: target.segmentIndex,
+          requestId: `${clientId}-${++requestSequence}`,
+          revision: ticket.revision,
+          generation: ticket.generation,
           sessionToken: seedNeeded ? undefined : binding?.token,
-          shape: target.shape, slices: target.slices, promptSlices: target.promptSlices,
+          shape: target.shape,
+          slices: target.slices,
+          promptSlices: target.promptSlices,
           studyInstanceUID: target.studyUID,
         };
         if (target.nativeSource) {
-          Object.assign(context, target.nativeSource, { version: 2, sourceType: 'nifti',
-            gridConvention: { source: 'IJK', model: 'ZYX', physical: 'LPS-mm' } });
+          Object.assign(context, target.nativeSource, {
+            version: 2,
+            sourceType: 'nifti',
+            gridConvention: { source: 'IJK', model: 'ZYX', physical: 'LPS-mm' },
+          });
         }
         try {
           reply = await adapter.infer(context, snapshot.buffer, prompts);
           const echoed = reply.context;
-          if (!echoed || ['version', 'seriesUID', 'segmentationId', 'segmentIndex', 'requestId', 'revision', 'generation']
-            .some(field => echoed[field] !== context[field]) || typeof echoed.sessionToken !== 'string' || !echoed.sessionToken ||
-            JSON.stringify(reply.shape) !== JSON.stringify(target.shape)) {
+          if (
+            !echoed ||
+            [
+              'version',
+              'seriesUID',
+              'segmentationId',
+              'segmentIndex',
+              'requestId',
+              'revision',
+              'generation',
+            ].some(field => echoed[field] !== context[field]) ||
+            typeof echoed.sessionToken !== 'string' ||
+            !echoed.sessionToken ||
+            JSON.stringify(reply.shape) !== JSON.stringify(target.shape)
+          ) {
             throw new Error('AI 响应与当前请求不匹配，原 mask 未修改。');
           }
-          if (context.version === 2 && ['sourceType', 'sourceId', 'geometryHash'].some(field => echoed[field] !== context[field])) {
+          if (
+            context.version === 2 &&
+            ['sourceType', 'sourceId', 'geometryHash'].some(
+              field => echoed[field] !== context[field]
+            )
+          ) {
             throw new Error('AI 返回的 NIfTI 原图身份不匹配，原 mask 未修改。');
           }
           break;
         } catch (error) {
           binding = undefined;
-          if (attempt !== 0 || (error as any).code !== 'NN_RESYNC_REQUIRED' || !isCurrent(ticket)) throw error;
+          if (attempt !== 0 || (error as any).code !== 'NN_RESYNC_REQUIRED' || !isCurrent(ticket))
+            throw error;
           // Retry only the new prompts from THIS transaction, never old history.
           seedNeeded = true;
           snapshot = await adapter.inspect(target, true);
@@ -169,21 +318,32 @@ export function createNnEditor(adapter: Adapter) {
         // A missing data event must also retire this interaction epoch. Do not
         // invalidate a new target's queued prompts when discarding an old one.
         const now = observe();
-        if (now?.generation === ticket.generation && now.epoch === ticket.epoch) epoch++;
+        if (now?.generation === ticket.generation && now.epoch === ticket.epoch) {
+          epoch++;
+          releaseBase(key);
+          adapter.invalidatePrompts?.(target);
+        }
         adapter.retirePrompts(prompts);
         adapter.notify('AI 结果已丢弃：目标已切换或 mask 已被编辑，当前内容保留。', 'warning');
         return;
       }
       committing = true;
       let clipped: boolean;
-      try { ({ clipped } = adapter.commit(target, reply)); }
-      finally { committing = false; }
+      try {
+        ({ clipped } = adapter.commit(target, reply));
+      } finally {
+        committing = false;
+      }
       const revision = ticket.revision + 1;
       revisions.set(target.segmentationId, revision);
       binding = clipped ? undefined : { key, revision, token: reply.context.sessionToken };
+      replay.delete(key);
       for (const prompt of prompts) processed.add(prompt.uid);
-      adapter.retirePrompts(prompts);
-      adapter.notify(clipped ? '已更新当前 mask；与同组其他 mask 冲突的像素已保留。' : '已更新当前 mask。', 'success');
+      adapter.retirePrompts(prompts, true);
+      adapter.notify(
+        clipped ? '已更新当前 mask；与同组其他 mask 冲突的像素已保留。' : '已更新当前 mask。',
+        'success'
+      );
     } catch (error) {
       binding = undefined;
       // A failed request never changes browser pixels. Retrying can reuse only
@@ -194,19 +354,37 @@ export function createNnEditor(adapter: Adapter) {
 
   function run(ticket?: NnTicket) {
     const captured = ticket || observe();
-    if (!captured) { adapter.notify('请先在分割面板创建或选择一个未锁定的 mask。', 'warning'); return Promise.resolve(); }
+    if (!captured) {
+      adapter.notify('请先在分割面板创建或选择一个未锁定的 mask。', 'warning');
+      return Promise.resolve();
+    }
     pending = captured;
     if (!running) {
       running = (async () => {
         while (pending) {
           const next = pending;
           pending = undefined;
-          try { await runOne(next); }
-          catch (error) { binding = undefined; adapter.notify((error as Error).message, 'error'); }
+          try {
+            await runOne(next);
+          } catch (error) {
+            binding = undefined;
+            adapter.notify((error as Error).message, 'error');
+          }
         }
-      })().finally(() => { running = undefined; });
+      })().finally(() => {
+        running = undefined;
+      });
     }
     return running;
   }
-  return { capture: observe, selectionChanged: observe, changed, reset, run };
+  return {
+    capture: observe,
+    selectionChanged: observe,
+    changed,
+    reset,
+    run,
+    replacePrompts,
+    forget,
+    isRunning: () => !!running,
+  };
 }

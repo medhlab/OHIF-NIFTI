@@ -1,22 +1,61 @@
 import React, { useEffect, useState } from 'react';
-import { FileText, Layers, PanelRightClose } from 'lucide-react';
-import Panel from './Panel';
-import ReportPanel from './ReportPanel';
-import { getWorkspace } from './workspace';
+import { Info, PanelRightClose } from 'lucide-react';
+import ImageInfoPanel from './ImageInfoPanel';
+import FindingEntityPanel from './FindingEntityPanel';
 import './workspace.css';
 
 export default function WorkspacePanel({ onClosePanel }: { onClosePanel?: () => void }) {
-  const [tab, setTab] = useState(() => { const w = getWorkspace(); return w.manifest?.items.find(r => r.caseId === w.caseId)?.reports?.length ? 'report' : 'annotation'; });
-  useEffect(() => { const listener = e => setTab(e.detail); window.addEventListener('nifti:workspace-tab', listener); return () => window.removeEventListener('nifti:workspace-tab', listener); }, []);
+  const [tab, setTab] = useState('findingEntity');
+  useEffect(() => {
+    const listener = event => {
+      // Accept the legacy event value while all current callers use findingEntity.
+      if (['report', 'findingEntity', 'lesion', 'info'].includes(event.detail)) {
+        setTab(event.detail === 'info' ? 'info' : 'findingEntity');
+      }
+    };
+    window.addEventListener('nifti:workspace-tab', listener);
+    return () => window.removeEventListener('nifti:workspace-tab', listener);
+  }, []);
   return (
     <div className="nw-shell">
-      <nav className="nw-tabs" aria-label="报告与标注面板">
-        <button className="nw-tab nw-tab-report" aria-pressed={tab === 'report'} onClick={() => setTab('report')}><FileText size={17} />报告</button>
-        <button className="nw-tab nw-tab-annotation" aria-pressed={tab === 'annotation'} onClick={() => setTab('annotation')}><Layers size={17} />标注与 AI</button>
-        {onClosePanel && <button className="nw-panel-close" aria-label="收起报告与标注面板" onClick={onClosePanel}><PanelRightClose size={18} /></button>}
-      </nav>
-      <div hidden={tab !== 'report'}><ReportPanel /></div>
-      <div hidden={tab !== 'annotation'}><Panel /></div>
+      <div className="nw-sticky-header">
+        <div id="nifti-annotation-context" />
+        <nav
+          className="nw-tabs"
+          aria-label="报告与标注面板"
+        >
+          <button
+            className="nw-tab"
+            aria-pressed={tab === 'findingEntity'}
+            onClick={() => setTab('findingEntity')}
+          >
+            Finding / Entity
+          </button>
+          <button
+            className="nw-tab nw-tab-annotation"
+            aria-pressed={tab === 'info'}
+            onClick={() => setTab('info')}
+          >
+            <Info size={17} />
+            图像信息
+          </button>
+          {onClosePanel && (
+            <button
+              className="nw-panel-close"
+              aria-label="收起报告与标注面板"
+              onClick={onClosePanel}
+            >
+              <PanelRightClose size={18} />
+            </button>
+          )}
+        </nav>
+      </div>
+      <div hidden={tab !== 'findingEntity'}>
+        <FindingEntityPanel />
+      </div>
+      <div hidden={tab !== 'info'}>
+        <ImageInfoPanel />
+      </div>
     </div>
   );
 }

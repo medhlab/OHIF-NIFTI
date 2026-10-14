@@ -66,7 +66,7 @@ function ToolButton(props: ToolButtonProps) {
   const showTooltip = hasSecondaryTooltip || defaultTooltip;
 
   return (
-    <Tooltip>
+    <Tooltip disableHoverableContent>
       <TooltipTrigger
         asChild
         className={cn(disabled && 'cursor-not-allowed')}
@@ -88,6 +88,7 @@ function ToolButton(props: ToolButtonProps) {
             variant="ghost"
             size="icon"
             aria-label={defaultTooltip}
+            aria-pressed={isActive}
             disabled={disabled}
           >
             <Icons.ByName

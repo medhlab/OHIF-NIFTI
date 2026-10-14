@@ -1,5 +1,7 @@
 """Native selected-mask protocol v2; DICOM v1 validation remains unchanged."""
 import math
+import gzip
+import zlib
 import numpy as np
 from monailabel.utils.others.nn_context import fail, remap_prompts
 from monailabel.utils.others.nifti_source import MAX_VOXEL_BYTES
@@ -39,11 +41,23 @@ def validate_prompts(params, order, shape):
     return params
 
 
-def read_seed(stream, shape, order):
+def read_seed(stream, shape, order, encoding='raw'):
+    if encoding not in ('raw', 'gzip'):
+        fail('NN_INVALID_SEED', 'Unsupported seed encoding.', 422)
     if stream is None:
+        if encoding != 'raw':
+            fail('NN_INVALID_SEED', 'Compressed seed is missing.', 422)
         return None
     size = math.prod(shape)
-    raw = stream.read(size + 1)
+    try:
+        if encoding == 'gzip':
+            # Bound the decompressed grid, verify CRC/truncation, and reject extra data.
+            with gzip.GzipFile(fileobj=stream, mode='rb') as decoder:
+                raw = decoder.read(size + 1)
+        else:
+            raw = stream.read(size + 1)
+    except (OSError, EOFError, zlib.error):
+        fail('NN_INVALID_SEED', 'Invalid compressed seed.', 422)
     if len(raw) != size:
         fail('NN_INVALID_SEED', 'Seed byte length differs from source.', 422)
     data = np.frombuffer(raw, np.uint8).reshape(shape)
