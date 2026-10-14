@@ -58,3 +58,11 @@ rtx4500 隔离预览 viewer/backend 为 `mask-save-60fc85c190`；本轮提交不
 用户授权整理、提交、推送并同步团队记录。功能提交 `b8e7d9fda37ed5023cde2012e3882427fbd06a27`（codex/annotation-v1）涵盖紧凑标注状态卡片、保存/退出按钮归位、顶栏工具分组、互斥手工/AI模式、应用提示和目标隔离重试状态，以及手动更新提示后的待处理标记。8个源码与测试文件逐文件匹配已验收快照 `da657be3ae52694102b70608dc1fd95d4465685897f5df5e123fabe9ee527488`。
 
 完整OHIF构建及65项测试已通过；此前真实CT页面确认模式/工具同步、自动时隐藏应用按钮、手动无提示禁用及有待处理提示启用。当前核验隔离viewer运行 `ohif-nifti-rtx4500-viewer:apply-prompts-da657be3ae`。公共产物 rtx4500 `/home/ant/projects/OHIF-NIFTI/releases/apply-prompts-20261014/`。本次仅提交与推送，不重启服务或修改标注数据；无需重复运行模型。此前“未提交”段落为历史记录，当前代码已提交；远端发布以本次推送核验为准。
+
+## 2026-10-14 Finding/Entity界面与流水线整理发布
+
+用户授权整理全部改动、推送并创建PR。界面功能提交 `10eabe4`，流水线排序修复及离线重放工具提交 `c959808`。包含病例完成状态归位、任务列表进度、统一可折叠标题与Finding默认收起、行内类别/Entity改名、空mask提示、单行报告提示、移除共享选择及冗余内容、紧凑图标状态卡片和鼠标工具唯一高亮。此前工具栏/应用提示提交 `b8e7d9f` 同属本次相对main增量。
+
+18个运行源码与测试文件逐文件匹配已部署 `active-tool-de19ee1b3a` 快照 `de19ee1b3a65d0397dc0f20395ed21bb6d2bd24872dda47da42815e47aa9ba47`。沿用完整OHIF构建、67项前端测试与真实CT界面验收。报告缓存重放100份/184体积，逐例内容/ID/关系不变、0模型调用；全量新导入API核验原文顺序与干净Entity/links。当前manifest `9ce3d83a1ab345fdb85e044ca1cad420`，流水线公共版本见deploy/nifti/report-source-order.md。
+
+本次仅Git整理发布，不重启服务或改变已导入数据。此前未提交描述均为历史状态，发布证据以远端提交和PR为准。在线LLM调度、自动图像定位、真实TotalSegmentator结果及人工语义质量验收仍不在本次完成范围。后端历史annotationDisposition兼容仍保留，本次移除其UI入口。
