@@ -102,6 +102,10 @@ def mutation(db, case_id, key, payload):
             report['sections'].append({'id': identity(), 'name': text(s.get('name', 'Findings'), 200), 'text': body,
                                        'textSha256': hashlib.sha256(body.encode()).hexdigest()})
         case['reports'].append(report)
+    elif op == 'reportExtraction':
+        from .report_extraction import import_result
+        external = db.execute('SELECT external_key FROM annotation_cases WHERE id=?', (case_id,)).fetchone()[0]
+        import_result(case, payload, external)
     elif op == 'finding':
         category = payload.get('category')
         if category is not None and (not isinstance(category, str) or category not in CATEGORIES):
@@ -137,11 +141,20 @@ def mutation(db, case_id, key, payload):
             member(case, 'findings', fid)
         entity = {'id': identity(), 'name': text(payload.get('name', '新病灶'), 200), 'maskId': None,
                   'labels': [], 'anatomy': [], 'annotationDisposition': 'needs_annotation', 'dispositionReason': None}
+        if 'observationIds' in payload:
+            from .report_extraction import observation_bindings
+            entity['reportObservations'] = observation_bindings(case, payload['observationIds'])
         case['entities'].append(entity)
         for fid in finding_ids:
             link(case, fid, entity['id'])
     elif op == 'link':
         link(case, payload.get('findingId'), payload.get('entityId'))
+        if 'observationIds' in payload:
+            from .report_extraction import observation_bindings
+            entity = member(case, 'entities', payload.get('entityId'))
+            bindings = observation_bindings(case, payload['observationIds'])
+            existing = entity.setdefault('reportObservations', [])
+            existing.extend(b for b in bindings if b not in existing)
     elif op == 'unlink':
         target = member(case, 'links', payload.get('linkId'))
         case['links'].remove(target)
@@ -155,6 +168,13 @@ def mutation(db, case_id, key, payload):
                 fail('INVALID_DISPOSITION', '无效的标注处置。')
             entity['annotationDisposition'] = disposition
             entity['dispositionReason'] = text(payload.get('dispositionReason'), 500) if disposition == 'not_required' else None
+    elif op == 'deleteEntity':
+        entity = member(case, 'entities', payload.get('entityId'))
+        # Keep snapshots, mask versions and ownership records for history and to
+        # prevent the old mask endpoint from bypassing the deleted Entity.
+        case.setdefault('deletedEntities', []).append(dict(entity, deletedRevision=case['revision'] + 1))
+        case['entities'].remove(entity)
+        case['links'] = [item for item in case['links'] if item['entityId'] != entity['id']]
     elif op == 'complete':
         if not case['sourceId']: fail('CT_REQUIRED', '请先打开参考 CT。', 409)
         for entity in case['entities']:

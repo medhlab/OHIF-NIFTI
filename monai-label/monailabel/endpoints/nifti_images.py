@@ -246,6 +246,8 @@ def runtime_source_descriptor(meta):
     # Keep stored image metadata and identity unchanged when AI is enabled later.
     return meta | {'capabilities': (meta.get('capabilities') or {}) | {
         'ai': os.environ.get('ENABLE_NIFTI_AI', 'false').lower() == 'true',
+        'nnSeedEncodings': ['raw', 'gzip'],
+        'maskEncodings': ['raw', 'gzip'],
     }}
 
 
@@ -348,7 +350,7 @@ def upload_source(file: UploadFile = File(...), unit: str = Form(None), modality
             except Exception:
                 shutil.rmtree(final)
                 raise
-        return meta
+        return runtime_source_descriptor(meta)
 
 
 @router.get('')
@@ -497,11 +499,13 @@ def save_masks(source_id: str, file: UploadFile = File(...), label: str = Form('
         staged = stage_upload(file, Path(temp))
         transform = np.eye(4, dtype=int).tolist()
         if raw:
-            if staged.stat().st_size != source['count']:
-                raise HTTPException(422, 'Binary seed byte length differs from source.')
-            data = np.fromfile(staged, dtype=np.uint8).reshape(tuple(reversed(source['dimensions'])))
-            if (data > 1).any():
-                raise HTTPException(422, 'Raw masks must be binary.')
+            # A binary 0/1 grid cannot begin with gzip magic. Old raw clients remain valid.
+            from monailabel.utils.others.nifti_context import read_seed
+            shape = tuple(reversed(source['dimensions']))
+            with staged.open('rb') as stream:
+                compressed = stream.read(2) == b'\x1f\x8b'
+                stream.seek(0)
+                data = read_seed(stream, shape, list(range(shape[0])), 'gzip' if compressed else 'raw')
         else:
             mask_meta, data = read_nifti(staged, source['unit'], mask=True)
             data, transform = align_mask(data, mask_meta, source)
@@ -759,11 +763,17 @@ def infer_native(source_id: str, params: str = Form(...), nn_seed: UploadFile = 
     context = request_data.get('nn_context')
     shape, mask_order, prompt_order = validate_context(context, source)
     validate_prompts(request_data, prompt_order, shape)
+    lock_started = time.monotonic()
+    timings = {}
     with work('infer'), NN_SESSION_LOCK:
-        seed = read_seed(nn_seed.file if nn_seed else None, shape, mask_order)
+        timings['queue'] = time.monotonic() - lock_started
+        seed_started = time.monotonic()
+        seed = read_seed(nn_seed.file if nn_seed else None, shape, mask_order, request_data.get('nn_seed_encoding', 'raw'))
+        timings['seed'] = time.monotonic() - seed_started
         model_started = time.monotonic()
         session = get_nn_session()
-        logger.info('nifti operation=model_session elapsed_seconds=%.3f', time.monotonic() - model_started)
+        timings['model'] = time.monotonic() - model_started
+        logger.info('nifti operation=model_session elapsed_seconds=%.3f', timings['model'])
         started = time.monotonic()
         try:
             identity = 'native-nifti:' + source_id + ':' + source['geometryHash']
@@ -771,8 +781,12 @@ def infer_native(source_id: str, params: str = Form(...), nn_seed: UploadFile = 
                 _, image = read_nifti(source_path(source_id, source), source['unit'])
                 prepare_nn_image(session, identity, image[None])
             # Include authoritative source identity in the session key, not the client study alias.
+            timings['image'] = time.monotonic() - started
             binding_context = context | {'seriesUID': identity}
+            phase_started = time.monotonic()
             bind_context(session, binding_context, seed)
+            timings['binding'] = time.monotonic() - phase_started
+            phase_started = time.monotonic()
             for sign, include in [('pos', True), ('neg', False)]:
                 for point in request_data.get(sign + '_points', []):
                     session.add_point_interaction(tuple(point[::-1]), include_interaction=include)
@@ -795,6 +809,8 @@ def infer_native(source_id: str, params: str = Form(...), nn_seed: UploadFile = 
                         prompt_mask[coords[:, 2], coords[:, 1], coords[:, 0]] = 1
                         fn = session.add_lasso_interaction if kind == 'lassos' else session.add_scribble_interaction
                         fn(prompt_mask, include_interaction=include)
+            timings['prediction'] = time.monotonic() - phase_started
+            phase_started = time.monotonic()
             prediction = session.target_buffer
             if hasattr(prediction, 'detach'):
                 prediction = prediction.detach().cpu().numpy()
@@ -802,6 +818,7 @@ def infer_native(source_id: str, params: str = Form(...), nn_seed: UploadFile = 
             if list(prediction.shape) != shape or not np.isin(prediction, [0, 1]).all():
                 raise HTTPException(502, 'AI returned an invalid binary grid.')
             result = np.ascontiguousarray(prediction[mask_order], dtype=np.uint8).tobytes()
+            timings['result'] = time.monotonic() - phase_started
             echo = finish_context(session, binding_context) | {
                 'seriesUID': context['seriesUID'], 'sourceId': source_id, 'sourceType': 'nifti',
                 'geometryHash': source['geometryHash'],
@@ -811,8 +828,10 @@ def infer_native(source_id: str, params: str = Form(...), nn_seed: UploadFile = 
             raise
     boundary = 'nifti-' + uuid.uuid4().hex
     meta = json.dumps({'nn_context': echo, 'mask_shape': shape, 'flipped': False,
-                       'nninter_elapsed': round(time.monotonic() - started, 3)})
+                       'nninter_elapsed': round(time.monotonic() - started, 3),
+                       'nn_timings': {key: round(value, 4) for key, value in timings.items()}})
     prefix = (f'--{boundary}\r\nContent-Disposition: form-data; name="meta"\r\nContent-Type: application/json\r\n\r\n{meta}\r\n'
               f'--{boundary}\r\nContent-Disposition: form-data; name="seg"\r\nContent-Type: application/octet-stream\r\n\r\n').encode()
     return StreamingResponse(iter((prefix, result, f'\r\n--{boundary}--\r\n'.encode())),
-                             media_type='multipart/form-data; boundary=' + boundary)
+                             media_type='multipart/form-data; boundary=' + boundary,
+                             headers={'Server-Timing': ', '.join(f'{key};dur={value * 1000:.1f}' for key, value in timings.items())})

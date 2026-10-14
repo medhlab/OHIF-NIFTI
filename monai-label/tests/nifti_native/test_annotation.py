@@ -168,3 +168,87 @@ def test_presentation_only_save_keeps_completion(client,tmp_path):
     after=state(client,case)
     assert after['revision']==case['revision'] and after['completedRevision']==after['revision']
     assert response.json()['items'][0]['parentVersion']==1
+
+
+def test_delete_shared_entity_preserves_report_and_mask_history(client, tmp_path):
+    source, case, _ = setup_case(client, tmp_path)
+    case = op(client, case, 'finding', text='A', category='2d').json()['data']
+    case = op(client, case, 'finding', text='B', category='2d').json()['data']
+    case = op(client, case, 'entity', name='shared', findingIds=[f['id'] for f in case['findings']]).json()['data']
+    entity = case['entities'][0]
+    seed = np.ones(source['count'], dtype=np.uint8)
+    saved = save(client, source, case, entity, seed)
+    assert saved.status_code == 200
+    mask_id = saved.json()['items'][0]['maskId']
+    case = op(client, state(client, case), 'complete').json()['data']
+    response = op(client, case, 'deleteEntity', key='delete-shared', entityId=entity['id'])
+    assert response.status_code == 200
+    after = response.json()['data']
+    assert after['entities'] == [] and after['links'] == []
+    assert after['findings'] == case['findings']
+    assert after['revision'] == case['revision'] + 1
+    assert after['completedRevision'] != after['revision']
+    assert after['deletedEntities'][0]['maskId'] == mask_id
+    assert op(client, case, 'deleteEntity', key='delete-shared', entityId=entity['id']).json() == response.json()
+    assert op(client, after, 'deleteEntity', entityId='other-case').status_code == 404
+    assert state(client, after)['revision'] == after['revision']
+    assert client.get('/nifti-images/' + source['sourceId'] + '/masks/' + mask_id).status_code == 200
+    # Deleted masks cannot be resurrected by either save API.
+    assert save(client, source, after, entity, seed, key='deleted-save', version=1).status_code == 404
+    bypass = client.post('/nifti-images/' + source['sourceId'] + '/masks',
+        data={'raw':'true','maskId':mask_id,'expectedVersion':1,'geometryHash':source['geometryHash']},
+        files={'file':('mask.bin',seed.tobytes())})
+    assert bypass.status_code == 409
+
+
+def test_delete_unsaved_entity_rejects_stale_revision(client, tmp_path):
+    _, case, _ = setup_case(client, tmp_path)
+    old = case
+    case = op(client, case, 'entity', name='new').json()['data']
+    entity = case['entities'][0]
+    assert op(client, old, 'deleteEntity', entityId=entity['id']).status_code == 409
+    after = op(client, case, 'deleteEntity', entityId=entity['id']).json()['data']
+    assert not after['entities'] and after['deletedEntities'][0]['maskId'] is None
+
+
+def test_gzip_mask_matches_raw_version_and_replays(client, tmp_path):
+    import gzip
+    source,case,_=setup_case(client,tmp_path)
+    assert 'gzip' in source['capabilities']['maskEncodings']
+    case=op(client,case,'entity',name='Entity').json()['data'];entity=case['entities'][0]
+    seed=np.zeros(source['count'],dtype=np.uint8);seed[5:9]=1
+    first=save(client,source,case,entity,seed).json()['items'][0]
+    case=state(client,case)
+    def packed():
+        return client.post(ROOT+f"/cases/{case['caseId']}/entities/{entity['id']}/mask-versions",
+            headers={'Idempotency-Key':'gzip-save'},
+            data={'expectedCaseRevision':case['revision'],'expectedMaskVersion':1,'geometryHash':source['geometryHash'],'label':'Entity'},
+            files={'file':('mask.bin.gz',gzip.compress(seed.tobytes()))})
+    response=packed();assert response.status_code==200,response.text
+    item=response.json()['items'][0]
+    assert item['maskId']==first['maskId'] and item['version']==2
+    assert item['voxelHash']==first['voxelHash'] and item['voxelCount']==4
+    assert item['geometryHash']==first['geometryHash']
+    assert packed().json()==response.json()
+
+
+@pytest.mark.parametrize('invalid', ['truncated', 'crc', 'oversize', 'nonbinary'])
+def test_invalid_gzip_mask_has_no_partial_version_or_binding(client,tmp_path,invalid):
+    import gzip
+    source,case,_=setup_case(client,tmp_path)
+    case=op(client,case,'entity',name='Entity').json()['data'];entity=case['entities'][0]
+    seed=bytes(source['count'])
+    if invalid=='oversize': seed+=b'\x00'
+    if invalid=='nonbinary': seed=b'\x02'+seed[1:]
+    payload=gzip.compress(seed)
+    if invalid=='truncated': payload=payload[:-4]
+    if invalid=='crc': payload=payload[:-8]+bytes([payload[-8]^1])+payload[-7:]
+    response=client.post(ROOT+f"/cases/{case['caseId']}/entities/{entity['id']}/mask-versions",
+        headers={'Idempotency-Key':'bad-gzip'},
+        data={'expectedCaseRevision':case['revision'],'expectedMaskVersion':0,'geometryHash':source['geometryHash'],'labelOnly':'true'},
+        files={'file':('mask.bin.gz',payload)})
+    assert response.status_code==422,response.text
+    after=state(client,case)
+    assert after['revision']==case['revision'] and after['entities'][0]['maskId'] is None
+    with nifti_images.database() as db:
+        assert db.execute('SELECT count(*) FROM annotation_mask_owners').fetchone()[0]==0
