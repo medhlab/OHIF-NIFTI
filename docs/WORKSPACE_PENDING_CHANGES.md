@@ -24,3 +24,17 @@ rtx4500 隔离预览 viewer/backend 为 `mask-save-60fc85c190`；本轮提交不
 前端组件由 LesionPanel/Panel 改为 FindingEntityPanel/AnnotationToolbar，保留旧内部事件别名；sourceStore保留原换行。报告模型原文字词、输出协议和历史部署副本保持原样。deploy/rtx4500 是2026-10-12历史配置；report-findings-acceptance.cjs保存2026-10-13旧界面验收方式，不应作为当前UI自动验收入口。
 
 在线 LLM 调度、自动图像定位、报告更新以及语义准确率评估尚未完成；提示历史仅限当前会话。真实 TotalSegmentator 结果仍待用户补充。提交保存当前已验证的实现，不代表这些功能或产品评审完成。
+
+## 2026-10-14 Finding 内 Entity 编号验收完成
+
+显示编号改为 Finding 内当前 Entity 顺序，从 E1 开始；统一卡片、共享关联选项和顶部编辑目标使用 F2-E1 等别名。默认新 Entity 名称按该组现有数量生成；既有自定义名称保留。无 Finding 的 Entity 使用独立 E 序号。共享 Entity 在每个 Finding 有本地别名，实际 UUID、links、mask 主版本不变；显示序号会随删除/解除关联重新排列，不是持久身份或导出主键。
+
+4项局部编号单测（跨Finding独立、全删重建、共享别名、未关联组）与5项编辑目标描述回归通过。完整OHIF构建通过，构建内63项前端测试通过。独立公开CT工程Case 52eb0b26dd9844ab84819a3ceb5ab70b 先保留F1对象，在F2新增显示F2-E1，删除F2对象并确认浏览/尚无mask，再新增仍F2-E1；顶部明确编辑同一F2-E1，无前端error。测试删除动作曾返回浏览器自动化超时，随后实际UI及API确认删除已完成；未重复删除。未修改用户Case、未保存工程mask或启动推理。
+
+隔离 viewer 更新为 entity-labels-da38443d75，快照 da38443d755c88ca6d9df278a536372e3db7ccdb705e7bddc80e44e419ab6773，基线364733d；两后端和正式viewer容器身份/启动时间不变。公共产物 rtx4500 /home/ant/projects/OHIF-NIFTI/releases/entity-labels-20261014/（源码哈希、构建、部署回执、工程fixture和截图）。回退用mask-save-20261014/compose.preview.json，仅 up -d --no-deps --no-build --pull never viewer；数据无需迁移。需刷新当前页取得新版，先保存有价值的未保存修改。此增量应用代码未提交。
+
+团队同步待完成：GitHub DNS失败；计划已本地提交393578a，本节结论随后本地提交。负责人Annotation会话，网络恢复后普通fetch/push并核验远端。不得把本地记录当作团队已同步。
+
+## 2026-10-14 全部改动发布准备
+
+用户已明确授权提交并推送全部应用改动及团队记录。Entity显示编号修复现已提交为11b3172ad38e020fe144afb8002c7819a34d2e21，运行代码与entity-labels-da38443d75部署快照逐文件相等，沿用63项前端测试、完整OHIF构建及真实CT删除重建验收。此前“未提交/未推送”记录属于当时的历史状态，发布状态以Git远端核验及团队任务记录为准。本次只同步Git，不重启服务，不改变标注数据；正式与隔离服务继续保持其已验收镜像。
