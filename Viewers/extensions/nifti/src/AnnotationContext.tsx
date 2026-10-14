@@ -58,16 +58,12 @@ export default function AnnotationContext({
         data-segmentation-id={editing ? mask?.segmentationId : undefined}
       >
         <strong>当前 Entity · {title}</strong>
-        {editing && (
-          <span>
-            工具：{toolLabel}
-          </span>
-        )}
-        <span aria-label="当前 Entity 关联类别">{categoryText}</span>
+        <span className="nt-target-detail"><span aria-label="当前 Entity 关联类别">{categoryText}</span>{editing && <span> · {toolLabel}</span>}</span>
       </div>
       <div className="nt-card-footer">
         <div
           className="nt-status"
+          hidden={!busy && !error && !message && !dirty}
           aria-live="polite"
           title={error || message}
         >

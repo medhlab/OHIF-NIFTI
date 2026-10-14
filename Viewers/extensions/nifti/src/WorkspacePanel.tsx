@@ -50,10 +50,10 @@ export default function WorkspacePanel({ onClosePanel }: { onClosePanel?: () => 
           )}
         </nav>
       </div>
-      <div hidden={tab !== 'findingEntity'}>
+      <div className="nw-tab-content" hidden={tab !== 'findingEntity'}>
         <FindingEntityPanel />
       </div>
-      <div hidden={tab !== 'info'}>
+      <div className="nw-tab-content" hidden={tab !== 'info'}>
         <ImageInfoPanel />
       </div>
     </div>
