@@ -107,6 +107,7 @@ export function createNnEditor(adapter: Adapter) {
   let processed = new Set<string>();
   let pending: NnTicket | undefined;
   let running: Promise<void> | undefined;
+  let failure: { ticket: NnTicket; message: string } | undefined;
   let committing = false;
   let requestSequence = 0;
   // Unique across page reloads, without requiring a secure-context crypto API.
@@ -346,6 +347,7 @@ export function createNnEditor(adapter: Adapter) {
       );
     } catch (error) {
       binding = undefined;
+      if (isCurrent(ticket)) failure = { ticket, message: (error as Error).message || '推理失败' };
       // A failed request never changes browser pixels. Retrying can reuse only
       // its current-epoch prompts and must seed again.
       adapter.notify((error as Error).message || 'AI 操作失败，当前 mask 保留。', 'error');
@@ -358,6 +360,7 @@ export function createNnEditor(adapter: Adapter) {
       adapter.notify('请先在分割面板创建或选择一个未锁定的 mask。', 'warning');
       return Promise.resolve();
     }
+    failure = undefined;
     pending = captured;
     if (!running) {
       running = (async () => {
@@ -368,6 +371,7 @@ export function createNnEditor(adapter: Adapter) {
             await runOne(next);
           } catch (error) {
             binding = undefined;
+            if (isCurrent(next)) failure = { ticket: next, message: (error as Error).message || '推理失败' };
             adapter.notify((error as Error).message, 'error');
           }
         }
@@ -386,5 +390,6 @@ export function createNnEditor(adapter: Adapter) {
     replacePrompts,
     forget,
     isRunning: () => !!running,
+    getError: () => failure && isCurrent(failure.ticket) ? failure.message : undefined,
   };
 }

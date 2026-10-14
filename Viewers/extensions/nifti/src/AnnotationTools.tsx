@@ -40,7 +40,7 @@ const labels = {
   Eraser: '橡皮擦',
   Threshold: '阈值',
   Shapes: '形状',
-  nninter: '运行 AI',
+  nninter: '应用提示',
   resetNninter: '清空提示',
   InterpolateLabelmap: '跨层插值',
   SegmentBidirectional: '长短径',
@@ -96,6 +96,7 @@ export default function AnnotationTools({
   const locked = toolboxState.getLocked(),
     negative = toolboxState.getPosNeg(),
     live = toolboxState.getLiveMode();
+  const hasPendingPrompts = promptState.prompts.some(p => !p.applied && !p.archived);
   const aiTools = ai.toolbarButtons.filter(b =>
     ['Probe2', 'PlanarFreehandROI2', 'PlanarFreehandROI3', 'RectangleROI2'].includes(b.id)
   );
@@ -103,8 +104,8 @@ export default function AnnotationTools({
     ...brush.toolbarButtons,
     ...manual.toolbarButtons.filter(b => b.id === 'Shapes'),
   ];
-  const activeTool = [...aiTools, ...manualTools].find(b => b.componentProps.isActive);
-  const activeOptions = activeTool?.componentProps.options;
+  const activeOptions = (mode === 'ai' ? aiTools : manualTools)
+    .find(b => b.componentProps.isActive)?.componentProps.options;
   const change = fn => {
     fn();
     refresh(v => v + 1);
@@ -156,12 +157,12 @@ export default function AnnotationTools({
   };
   const activate = async (id, nextMode = mode) => {
     const token = ++sequence.current;
-    setMode(nextMode);
     const button = [...ai.toolbarButtons, ...manualTools, ...utilities.toolbarButtons].find(
       b => b.id === id
     );
     if (
       !editing ||
+      promptState.busy ||
       activeAnatomyReadOnly(servicesManager) ||
       !button ||
       (nextMode === 'ai' && (button.componentProps.disabled || locked || promptState.busy))
@@ -176,6 +177,7 @@ export default function AnnotationTools({
       else await beforeManual?.();
       if (token !== sequence.current) return;
       if (nextMode === 'ai') toolboxState.setSelectedModel('nnInteractive');
+      setMode(nextMode);
       // The shared toolbar dispatch applies current options and mutually
       // excludes the prior primary mouse tool; no separate editor tool state.
       ai.onInteraction({ itemId: id });
@@ -187,29 +189,38 @@ export default function AnnotationTools({
     }
   };
   const selectMode = next => {
-    if (next === mode) return;
-    browse();
-    setMode(next);
+    if (next === mode || pending || promptState.busy) return;
+    if (editing) {
+      void activate(next === 'ai' ? 'Probe2' : 'Brush', next);
+    } else {
+      setMode(next);
+    }
   };
   const toolProps = (tool, nextMode) => ({
     ...tool.componentProps,
     id: tool.id,
-    label: labels[tool.id] || tool.componentProps.label,
+    label: tool.id === 'nninter' && promptState.error ? '重试' : labels[tool.id] || tool.componentProps.label,
     tooltip: tool.componentProps.isActive ? '当前工具 · 使用浏览按钮切换' : undefined,
     disabled:
       !editing ||
       anatomyReadOnly ||
+      promptState.busy ||
       pending ||
       !sourceKey ||
+      (tool.id === 'nninter' && !hasPendingPrompts && !promptState.error) ||
       (nextMode === 'ai'
         ? tool.componentProps.disabled || locked || promptState.busy
         : utilities.toolbarButtons.includes(tool) && tool.componentProps.disabled),
-    disabledText: !editing
+    disabledText: tool.id === 'nninter' && !hasPendingPrompts && !promptState.error
+      ? '没有待处理提示'
+      : !editing
       ? '请先点击 Entity 的编辑按钮'
       : anatomyReadOnly
         ? '结构辅助图层只读，请选择 Entity 后编辑'
         : locked && nextMode === 'ai'
           ? '请先解锁 AI 提示'
+          : promptState.busy
+            ? '正在推理，请等待完成后切换工具'
           : pending
             ? '正在准备标注'
             : tool.componentProps.disabledText,
@@ -255,16 +266,31 @@ export default function AnnotationTools({
       className="annotation-tools"
       aria-label="标注工具"
     >
-      {enableEditing &&
+      <div className="at-mode-switch" role="group" aria-label="标注模式">
+        {[[ 'manual', Paintbrush, '手工编辑', enableEditing ], [ 'ai', Sparkles, 'AI 提示', enableAI ]].map(([value, Icon, label, enabled]) => enabled && (
+          <Tooltip key={value as string} disableHoverableContent>
+            <TooltipTrigger asChild>
+              <span><Button type="button" variant="ghost" size="icon"
+                aria-label={label as string} aria-pressed={mode === value}
+                disabled={pending || promptState.busy}
+                onClick={() => selectMode(value)} className="at-mode-button h-10 w-10">
+                {React.createElement(Icon as React.ElementType, { size: 23 })}
+              </Button></span>
+            </TooltipTrigger>
+            <TooltipContent side="bottom">{label as string}</TooltipContent>
+          </Tooltip>
+        ))}
+      </div>
+      {enableEditing && mode === 'manual' &&
         renderGroup(
           [...manualTools.filter(t => t.id !== 'Eraser'), ...utilities.toolbarButtons],
           'manual',
           '手工标注工具'
         )}
-      {enableEditing &&
+      {enableEditing && mode === 'manual' &&
         manualTools.filter(t => t.id === 'Eraser').map(t => renderTool(t, 'manual'))}
-      {enableAI && renderGroup(aiTools, 'ai', 'AI 提示工具')}
-      {enableAI && ai.toolbarButtons.filter(t => t.id === 'nninter').map(t => renderTool(t, 'ai'))}
+      {enableAI && mode === 'ai' && renderGroup(aiTools, 'ai', 'AI 提示工具')}
+      {enableAI && mode === 'ai' && (!live || promptState.error) && ai.toolbarButtons.filter(t => t.id === 'nninter').map(t => renderTool(t, 'ai'))}
       <Tooltip disableHoverableContent>
         <TooltipTrigger asChild>
           <span>
@@ -300,36 +326,7 @@ export default function AnnotationTools({
             role="region"
             aria-label="顶部标注工具设置"
           >
-            <div
-              className="at-tabs"
-              role="tablist"
-              aria-label="标注模式"
-            >
-              {enableAI && (
-                <button
-                  type="button"
-                  role="tab"
-                  aria-selected={mode === 'ai'}
-                  onClick={() => selectMode('ai')}
-                >
-                  <Sparkles size={16} />
-                  AI 提示
-                </button>
-              )}
-              {enableEditing && (
-                <button
-                  type="button"
-                  role="tab"
-                  aria-selected={mode === 'manual'}
-                  onClick={() => selectMode('manual')}
-                  disabled={pending}
-                  title="手工工具参数"
-                >
-                  <Paintbrush size={16} />
-                  手工编辑
-                </button>
-              )}
-            </div>
+            <strong className="at-mode-title">{mode === 'ai' ? 'AI 提示设置' : '手工编辑设置'}</strong>
             <div
               role="tabpanel"
               aria-label={mode === 'ai' ? 'AI 提示工具' : '手工编辑工具'}
@@ -446,6 +443,7 @@ export default function AnnotationTools({
                     </button>
                   </div>
                   {promptState.busy && <p role="status">nnInteractive 正在推理…</p>}
+                  {promptState.error && <p role="alert">{promptState.error}，可点击顶部“重试”。</p>}
                   {!promptState.target && <p>请先点击 Entity 的编辑按钮。</p>}
                   {promptState.prompts.map((prompt, index) => (
                     <div

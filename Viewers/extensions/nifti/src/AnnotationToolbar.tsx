@@ -10,7 +10,6 @@ import {
   Plus,
   Upload,
   FolderOpen,
-  Save,
   Download,
   History,
   Loader2,
@@ -298,6 +297,8 @@ export default function AnnotationToolbar() {
         dirty={dirty}
         editing={!!editing}
         toolLabel={toolLabel}
+        onSave={() => run(save)}
+        canSave={config.enableNiftiLibrary && !!source?.masks.size}
         onExit={() => {
           exitMaskEditing(servicesManager);
           setMessage('已退出编辑，未保存修改保留。');
@@ -332,15 +333,6 @@ export default function AnnotationToolbar() {
         controls="nt-layers"
         onClick={() => toggle('layers')}
       />
-      {config.enableNiftiLibrary && (
-        <ToolbarIconButton
-          label="保存标注"
-          icon={Save}
-          badge={dirty}
-          disabled={busy || !source?.masks.size}
-          onClick={() => run(save)}
-        />
-      )}
       {createPortal(
         <div
           id="nt-files"
@@ -389,12 +381,6 @@ export default function AnnotationToolbar() {
                   icon={Upload}
                   disabled={busy || !source || !!source.descriptor.sourceId}
                   onClick={() => run(signal => ensureStored(source, signal))}
-                />
-                <ToolbarIconButton
-                  label="Save All"
-                  icon={Save}
-                  disabled={busy || !source?.masks.size}
-                  onClick={() => run(save)}
                 />
                 <ToolbarIconButton
                   label="标注历史"
