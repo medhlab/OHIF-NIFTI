@@ -443,3 +443,6 @@ Entity行移除编辑中文字，仅铅笔高亮；空mask图标位于编号后�
 
 ### 2026-10-14 界面增量提交整理
 此前各节“应用增量尚未提交”为当时状态，本轮统一整理为独立界面PR，基于已合并PR #2的main。范围包括纯图标编辑模式组、Entity状态图标、固定紧凑右栏和辅助功能折叠、原文居中、单项Finding展开、标题加号及搜索、类别箭头点击和可拖动高度分隔条。19个运行源码/测试文件逐文件匹配finding-category-6af068a82c部署快照；沿用已通过的完整构建、67项测试和真实CT交互验收，本次Git整理不重启服务、不改数据。
+
+### 2026-10-14 其他报告提示并入列表验收完成
+真实CT验证rf-extra是rf-findings-scroll最后一个子项、前一项F7，展开包含3条报告提示，max-height为none、overflow为visible，跟随列表滚动，不占独立固定区域。完整OHIF构建及67项测试通过（3条webpack warning）。隔离viewer `ohif-nifti-rtx4500-viewer:finding-hints-7a678d4492`；产物rtx4500 `/home/ant/projects/OHIF-NIFTI/releases/finding-hints-20261014/`；回退finding-category-20261014/compose.preview.json。两backend及正式viewer未重启；本次为PR #3之后的独立增量提交。

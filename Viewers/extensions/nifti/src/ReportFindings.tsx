@@ -573,8 +573,6 @@ export default function ReportFindings({
         {context.findings.length > 0 && !filtered.length && (
           <p className="rf-empty">没有匹配的 Finding。</p>
         )}
-      </div>
-      </div>
       {extraObservations.length > 0 && (
         <details className="rf-extra">
           <summary>其他报告提示 · {extraObservations.length}</summary>
@@ -583,6 +581,8 @@ export default function ReportFindings({
           {selected && !selected.findingId && renderObservationDetails()}
         </details>
       )}
+      </div>
+      </div>
       {extraction?.rejected.length > 0 && (
         <details className="rf-rejected">
           <summary>提取问题 · {extraction.rejected.length} 条</summary>

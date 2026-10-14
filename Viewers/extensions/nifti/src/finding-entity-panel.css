@@ -505,3 +505,6 @@
 .rf-category-toggle:hover, .rf-category-toggle:focus-within { background:#392a48; color:#e0d0ff; }
 .annotation-panel .rf-category-picker .rf-category-select { position:absolute; inset:0; width:100%; height:100%; margin:0; padding:0; opacity:0; cursor:pointer; }
 .rf-category-toggle:has(select:disabled) { opacity:.4; }
+
+.nw-shell .rf-findings-scroll > .rf-extra { margin:6px 0 0; border:0; border-top:1px solid #4a3b57; border-radius:0; padding:7px 0; }
+.nw-shell .rf-findings-scroll > .rf-extra[open] { max-height:none; overflow:visible; }
