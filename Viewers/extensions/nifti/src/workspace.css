@@ -390,3 +390,9 @@
   z-index: 30;
   background: var(--wb-panel);
 }
+
+.nw-case-completion { display:flex; flex-wrap:wrap; align-items:center; gap:8px; padding:8px 0; margin-bottom:6px; border-bottom:1px solid #453652; font-size:12px; }
+.nw-case-completion button { margin-left:auto; padding:4px 8px; border:1px solid #80629d; border-radius:5px; background:#392a48; }
+.nw-case-completion button:disabled { opacity:.5; }
+.nw-case-completion small { flex-basis:100%; color:#b7abc7; }
+.nw-case-completion [role=alert] { color:#ffb7b7; }

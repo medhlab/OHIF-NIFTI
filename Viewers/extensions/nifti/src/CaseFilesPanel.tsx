@@ -6,6 +6,7 @@ import { findingMasks, locateFinding, useWorkspace } from './workspace';
 import { isMaskDirty } from './masks';
 import './workspace.css';
 import { switchCase } from './switchCase';
+import CaseCompletion from './CaseCompletion';
 
 export default function CaseFilesPanel() {
   const { servicesManager } = useSystem(),
@@ -195,6 +196,7 @@ export default function CaseFilesPanel() {
               </button>
               {active && (
                 <div className="nw-tree">
+                  <CaseCompletion key={source?.sourceKey} source={source} servicesManager={servicesManager} />
                   <div className="nw-tree-label nw-image-entry">
                     <Scan size={16} />
                     <span>原图</span>

@@ -65,59 +65,49 @@ export default function AnnotationContext({
         )}
         <span aria-label="当前 Entity 关联类别">{categoryText}</span>
       </div>
-      <div className="nt-card-actions">
-        <button
-          type="button"
-          className="nt-save-action"
-          aria-label="保存标注"
-          onClick={onSave}
-          disabled={busy || !canSave}
-          title="保存全部可编辑 mask；保存后继续编辑"
+      <div className="nt-card-footer">
+        <div
+          className="nt-status"
+          aria-live="polite"
+          title={error || message}
         >
-          <Save
-            size={16}
-            aria-hidden="true"
-          />
-          保存标注
-          {dirty > 0 && <span className="nt-save-count">{dirty}</span>}
-        </button>
-        <button
-          type="button"
-          className="nt-exit-action"
-          onClick={onExit}
-          disabled={busy || !editing}
-          title="返回浏览，未保存修改会保留"
-        >
-          <LogOut
-            size={16}
-            aria-hidden="true"
-          />
-          退出编辑
-        </button>
-      </div>
-      <div
-        className="nt-status"
-        aria-live="polite"
-        title={error || message}
-      >
-        {busy ? (
-          <>
-            <Loader2
-              size={15}
-              className="animate-spin"
-            />
-            {message || '处理中…'}
+          {busy ? (
+            <>
+              <Loader2
+                size={15}
+                className="animate-spin"
+              />
+              {message || '处理中…'}
+              <ToolbarIconButton
+                label="取消"
+                icon={X}
+                onClick={onCancel}
+              />
+            </>
+          ) : error ? (
+            <span role="alert">{error}</span>
+          ) : (
+            message || (dirty ? `${dirty} 个 mask 未保存` : '就绪')
+          )}
+        </div>
+        <div className="nt-card-actions">
+          <span className="nt-save-action">
             <ToolbarIconButton
-              label="取消"
-              icon={X}
-              onClick={onCancel}
+              label="保存标注"
+              icon={Save}
+              onClick={onSave}
+              disabled={busy || !canSave}
             />
-          </>
-        ) : error ? (
-          <span role="alert">{error}</span>
-        ) : (
-          message || (dirty ? `${dirty} 个 mask 未保存` : '就绪')
-        )}
+          </span>
+          <span className="nt-exit-action">
+            <ToolbarIconButton
+              label="退出编辑"
+              icon={LogOut}
+              onClick={onExit}
+              disabled={busy || !editing}
+            />
+          </span>
+        </div>
       </div>
     </section>,
     container

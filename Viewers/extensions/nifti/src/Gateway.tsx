@@ -5,6 +5,7 @@ import { FilePlus2, ListPlus, Search, RefreshCw, ChevronLeft, ChevronRight, Arro
 import { config, openLocal, openStreaming, releaseSource, sources } from './sourceStore';
 import { prepareStreaming } from './streaming';
 import { request, downloadSource, upload, openManifestCase } from './api';
+import { annotationRequest } from './annotationClient';
 import NiftiIcon from './NiftiIcon';
 import { setWorkspace, workspaceQuery } from './workspace';
 
@@ -21,6 +22,16 @@ export default function Gateway() {
   }, []);
   const navigate = useNavigate(), [query] = useSearchParams();
   const [manifest, setManifest] = useState(restoredManifest);
+  const [taskProgress, setTaskProgress] = useState(null);
+  useEffect(() => {
+    setTaskProgress(null);
+    if (!manifest?.id) return;
+    const controller = new AbortController();
+    annotationRequest(`/worklists/manifest-${encodeURIComponent(manifest.id)}/progress`, undefined, controller.signal)
+      .then(setTaskProgress).catch(() => {});
+    return () => controller.abort();
+  }, [manifest?.id]);
+
   const [view, setView] = useState(query.get('library') === '1' ? 'library' : restoredManifest() ? 'manifest' : 'library');
   const [unit, setUnit] = useState(() => defaults().unit), [modality, setModality] = useState(() => defaults().modality);
   const [dialog, setDialog] = useState<'local' | 'manifest' | 'settings' | 'help' | null>(null);
@@ -161,6 +172,7 @@ export default function Gateway() {
         {view === 'manifest' && manifest && <span title={hasRelativePaths ? manifest.base : undefined}>{hasRelativePaths ? `路径起点：${manifest.base}` : '服务器绝对路径'}</span>}
         <button onClick={() => setDialog('help')}><Info size={14} />数据与保存说明</button>
       </div>
+      {view === 'manifest' && taskProgress && <p role="status">已完成 {taskProgress.completedCases}/{taskProgress.totalCases} 例 · {Math.round(taskProgress.completionPercent || 0)}%</p>}
       {busy && <div role="status" className="catalog-progress"><Loader2 className="animate-spin" size={18} />{status}<button className="ml-auto underline" onClick={() => task.current?.abort()}>取消</button></div>}
       {error && <div role="alert" className="catalog-error">{error}</div>}
       <div className="catalog-table-scroll">

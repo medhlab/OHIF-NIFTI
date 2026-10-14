@@ -151,6 +151,9 @@
   background: var(--wb-panel);
 }
 .nt-context-card {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  column-gap: 10px;
   padding: 8px 10px;
   border: 1px solid #453652;
   border-radius: 8px;
@@ -162,6 +165,7 @@
     sans-serif;
 }
 .nt-card-heading {
+  grid-column: 1 / -1;
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -192,6 +196,7 @@
   background: #17382e;
 }
 .nt-target {
+  grid-column: 1;
   display: flex;
   flex-direction: column;
   gap: 3px;
@@ -216,40 +221,45 @@
 .nt-target [aria-label='当前 Entity 关联类别'] {
   color: #89cfbc;
 }
+.nt-card-footer {
+  display: contents;
+}
 .nt-card-actions {
   display: flex;
-  flex-wrap: wrap;
+  grid-column: 2;
+  grid-row: 2 / span 2;
+  align-self: center;
   gap: 6px;
-  padding-top: 6px;
-  margin-top: 6px;
-  border-top: 1px solid #3a2f45;
 }
 .nt-card-actions button {
   display: inline-flex;
-  flex: 1 1 90px;
+  flex: 0 0 auto;
+  white-space: nowrap;
   justify-content: center;
   align-items: center;
   gap: 5px;
+  width: 30px;
+  height: 30px;
   min-height: 30px;
-  padding: 4px 6px;
+  padding: 5px;
   font-size: 12px;
   font-weight: 600;
   border-radius: 7px;
 }
-.nt-card-actions .nt-save-action {
+.nt-card-actions .nt-save-action button {
   background: #7450a3;
   border: 1px solid #9570c2;
   color: #fff;
 }
-.nt-card-actions .nt-save-action:hover:not(:disabled) {
+.nt-card-actions .nt-save-action button:hover:not(:disabled) {
   background: #8961b8;
 }
-.nt-card-actions .nt-exit-action {
+.nt-card-actions .nt-exit-action button {
   background: #282331;
   border: 1px solid #665476;
   color: #dbcee9;
 }
-.nt-card-actions .nt-exit-action:hover:not(:disabled) {
+.nt-card-actions .nt-exit-action button:hover:not(:disabled) {
   background: #3b3048;
 }
 .nt-card-actions button:disabled {
@@ -260,19 +270,13 @@
   outline: 2px solid #c5a1f3;
   outline-offset: 2px;
 }
-.nt-save-count {
-  min-width: 18px;
-  padding: 0 4px;
-  line-height: 18px;
-  border-radius: 5px;
-  background: #ffffff24;
-  font-size: 11px;
-}
 .nt-status {
+  grid-column: 1;
   display: flex;
+  flex: 1;
+  min-width: 0;
   align-items: center;
   gap: 6px;
-  margin-top: 4px;
   min-height: 16px;
   color: #b5a8c4;
   font-size: 11px;

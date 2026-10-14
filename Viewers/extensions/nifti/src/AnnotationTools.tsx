@@ -189,7 +189,7 @@ export default function AnnotationTools({
     }
   };
   const selectMode = next => {
-    if (next === mode || pending || promptState.busy) return;
+    if (pending || promptState.busy) return;
     if (editing) {
       void activate(next === 'ai' ? 'Probe2' : 'Brush', next);
     } else {
@@ -271,7 +271,7 @@ export default function AnnotationTools({
           <Tooltip key={value as string} disableHoverableContent>
             <TooltipTrigger asChild>
               <span><Button type="button" variant="ghost" size="icon"
-                aria-label={label as string} aria-pressed={mode === value}
+                aria-label={label as string}
                 disabled={pending || promptState.busy}
                 onClick={() => selectMode(value)} className="at-mode-button h-10 w-10">
                 {React.createElement(Icon as React.ElementType, { size: 23 })}
