@@ -1,4 +1,4 @@
-import { entitiesForFinding } from './entityLabels.mjs';
+import { entitiesForFinding, entityLabel } from './entityLabels.mjs';
 import React, { useEffect, useRef, useState } from 'react';
 import { useSystem } from '@ohif/core';
 import { Crosshair, Trash2, Pencil } from 'lucide-react';
@@ -365,6 +365,9 @@ export default function FindingEntityPanel() {
               </div>
             }
           />
+          <details className="annotation-utilities">
+            <summary>其他功能</summary>
+            <div className="annotation-utilities-content">
           <h3>未关联 Finding 的 Entity</h3>
           <button
             disabled={busy || source?.annotationStatus?.busy}
@@ -382,7 +385,7 @@ export default function FindingEntityPanel() {
                 data-editing={editingEntityId === entity.id}
               >
                 <div className="rf-entity-header">
-                  <EntityName entity={entity} selected={selectedEntityId === entity.id || editingEntityId === entity.id}
+                  <EntityName entity={entity} prefix={entityLabel(context, entity.id)} selected={selectedEntityId === entity.id || editingEntityId === entity.id}
                     empty={entityMaskEmpty(source, entity)} busy={busy || source?.annotationStatus?.busy}
                     onSelect={() => { setSelectedEntityId(entity.id); if (!entityMaskEmpty(source, entity)) run(target => locateEntity(target, entity)); }}
                     onRename={name => run(target => mutate(target, { operation: 'entityMetadata', entityId: entity.id, name }))} />
@@ -415,9 +418,6 @@ export default function FindingEntityPanel() {
                     >
                       <Pencil size={16} />
                     </button>
-                    {editingEntityId === entity.id && (
-                      <small className="editing-badge">编辑中</small>
-                    )}
                     <button
                       type="button"
                       className="annotation-entity-action annotation-entity-action-delete"
@@ -468,6 +468,8 @@ export default function FindingEntityPanel() {
             >
               保存报告
             </button>
+          </details>
+            </div>
           </details>
         </>
       )}

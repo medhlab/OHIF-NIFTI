@@ -19,7 +19,8 @@ export default function EntityName({ entity, prefix = '', selected, empty, busy,
     title="点击选中，再次点击名称可改名" onClick={() => {
       if (selected) { setDraft(entity.name); setRenaming(true); } else onSelect();
     }}>
-    {prefix && <strong>{prefix}</strong>}<span>{entity.name}</span>
-    {empty && <span title="暂无标注" aria-label="暂无标注"><CircleDashed size={14} /></span>}
+    {prefix && <strong>{prefix}</strong>}
+    {empty && <span className="rf-entity-empty" title="暂无标注" aria-label="暂无标注"><CircleDashed size={14} /></span>}
+    <span>{entity.name}</span>
   </button>;
 }

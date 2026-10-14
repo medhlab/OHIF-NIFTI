@@ -184,3 +184,18 @@
 
 .at-mode-switch { display: flex; gap: 2px; padding-right: 6px; margin-right: 4px; border-right: 1px solid #665476; }
 .at-mode-title { display: block; margin-bottom: 12px; color: #d6c6e7; font-size: 13px; }
+
+/* A mode and its selected tool form one active control, not two active buttons. */
+.at-mode-group { display: flex; align-items: center; gap: 2px; border: 1px solid transparent; border-radius: 8px; }
+.at-mode-group[data-active='true'] { background: var(--wb-active-strong); border-color: #b28af0; }
+.at-mode-group .at-mode-button { display: inline-flex; align-items: center; gap: 7px; width: 38px; padding: 7px; white-space: nowrap; }
+.at-mode-group > [aria-label] { border-left: 1px solid #ffffff40; padding-left: 3px; }
+body.nifti-workbench .ohif-workbench-header .at-mode-group button,
+body.nifti-workbench .ohif-workbench-header .at-mode-group button[aria-pressed='true'] {
+  background: transparent !important; box-shadow: none !important; color: var(--wb-muted) !important;
+}
+body.nifti-workbench .ohif-workbench-header .at-mode-group[data-active='true'] button { color: #fff !important; }
+body.nifti-workbench .ohif-workbench-header .at-mode-group button:hover:not(:disabled) { background: #ffffff18 !important; }
+/* Neutral resting tools; purple consistently means the active mouse operation. */
+body.nifti-workbench .ohif-workbench-header .viewer-tool-row > [data-workbench-tool]:not([data-workbench-tool='NiftiAnnotation']) button { background: var(--wb-raised) !important; color: var(--wb-muted) !important; }
+body.nifti-workbench .ohif-workbench-header .viewer-tool-row > [data-workbench-tool]:not([data-workbench-tool='NiftiAnnotation']) button[aria-pressed='true'] { background: var(--wb-active-strong) !important; color: #fff !important; }

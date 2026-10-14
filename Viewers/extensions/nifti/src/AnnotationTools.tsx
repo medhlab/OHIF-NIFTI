@@ -104,6 +104,8 @@ export default function AnnotationTools({
     ...brush.toolbarButtons,
     ...manual.toolbarButtons.filter(b => b.id === 'Shapes'),
   ];
+  const activeMode = !editing ? null : aiTools.some(t => t.componentProps.isActive)
+    ? 'ai' : manualTools.some(t => t.componentProps.isActive) ? 'manual' : null;
   const activeOptions = (mode === 'ai' ? aiTools : manualTools)
     .find(b => b.componentProps.isActive)?.componentProps.options;
   const change = fn => {
@@ -189,7 +191,7 @@ export default function AnnotationTools({
     }
   };
   const selectMode = next => {
-    if (pending || promptState.busy) return;
+    if (next === activeMode || pending || promptState.busy) return;
     if (editing) {
       void activate(next === 'ai' ? 'Probe2' : 'Brush', next);
     } else {
@@ -229,6 +231,7 @@ export default function AnnotationTools({
     <ToolButton
       key={tool.id}
       {...toolProps(tool, nextMode)}
+      isActive={false}
       onInteraction={() => activate(tool.id, nextMode)}
     />
   );
@@ -267,30 +270,40 @@ export default function AnnotationTools({
       aria-label="标注工具"
     >
       <div className="at-mode-switch" role="group" aria-label="标注模式">
-        {[[ 'manual', Paintbrush, '手工编辑', enableEditing ], [ 'ai', Sparkles, 'AI 提示', enableAI ]].map(([value, Icon, label, enabled]) => enabled && (
-          <Tooltip key={value as string} disableHoverableContent>
-            <TooltipTrigger asChild>
-              <span><Button type="button" variant="ghost" size="icon"
-                aria-label={label as string}
-                disabled={pending || promptState.busy}
-                onClick={() => selectMode(value)} className="at-mode-button h-10 w-10">
-                {React.createElement(Icon as React.ElementType, { size: 23 })}
-              </Button></span>
-            </TooltipTrigger>
-            <TooltipContent side="bottom">{label as string}</TooltipContent>
-          </Tooltip>
-        ))}
+        {([
+          ['manual', Paintbrush, '手工编辑', enableEditing],
+          ['ai', Sparkles, 'AI 编辑', enableAI],
+        ] as const).map(([value, Icon, label, enabled]) => {
+          if (!enabled) return null;
+          const active = activeMode === value;
+          return (
+            <div key={value} className="at-mode-group" data-active={active}
+              role="group" aria-label={`${label}工具组`}>
+              <Tooltip disableHoverableContent>
+                <TooltipTrigger asChild>
+                  <span>
+                    <Button type="button" variant="ghost"
+                      aria-label={label} aria-pressed={active} aria-expanded={active}
+                      disabled={!editing || pending || promptState.busy || anatomyReadOnly}
+                      onClick={() => selectMode(value)} className="at-mode-button h-10">
+                      <Icon size={23} />
+                    </Button>
+                  </span>
+                </TooltipTrigger>
+                <TooltipContent side="bottom">
+                  {!editing ? `${label} · 请先新增 Entity 或点击 Entity 的编辑按钮` : label}
+                </TooltipContent>
+              </Tooltip>
+              {active && renderGroup(
+                value === 'ai' ? aiTools : [...manualTools, ...utilities.toolbarButtons],
+                value, value === 'ai' ? 'AI 提示工具' : '手工标注工具'
+              )}
+              {active && value === 'ai' && (!live || promptState.error) &&
+                ai.toolbarButtons.filter(t => t.id === 'nninter').map(t => renderTool(t, 'ai'))}
+            </div>
+          );
+        })}
       </div>
-      {enableEditing && mode === 'manual' &&
-        renderGroup(
-          [...manualTools.filter(t => t.id !== 'Eraser'), ...utilities.toolbarButtons],
-          'manual',
-          '手工标注工具'
-        )}
-      {enableEditing && mode === 'manual' &&
-        manualTools.filter(t => t.id === 'Eraser').map(t => renderTool(t, 'manual'))}
-      {enableAI && mode === 'ai' && renderGroup(aiTools, 'ai', 'AI 提示工具')}
-      {enableAI && mode === 'ai' && (!live || promptState.error) && ai.toolbarButtons.filter(t => t.id === 'nninter').map(t => renderTool(t, 'ai'))}
       <Tooltip disableHoverableContent>
         <TooltipTrigger asChild>
           <span>

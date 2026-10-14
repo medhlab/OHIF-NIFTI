@@ -21,13 +21,14 @@ import {
   warningText,
 } from './reportPresentation';
 
-function SectionHeading({ icon: Icon, title, count, open, onToggle, controls }) {
+function SectionHeading({ icon: Icon, title, count, open, onToggle, controls, action = null }) {
   return <div className="rf-section-heading">
     <Icon size={17} aria-hidden="true" />
     <button type="button" aria-expanded={open} aria-controls={controls} onClick={onToggle}>
       {open ? <ChevronDown size={14} /> : <ChevronRight size={14} />}{title}
     </button>
     {count != null && <span className="rf-count">{count}</span>}
+    {action}
   </div>;
 }
 
@@ -54,17 +55,29 @@ export default function ReportFindings({
   const [findingsOpen, setFindingsOpen] = useState(true);
   const [reportOpen, setReportOpen] = useState(true),
     [createOpen, setCreateOpen] = useState(false);
-  const [collapsed, setCollapsed] = useState<Set<string>>(
-    () => new Set(context.findings.map(f => f.id))
-  ),
-    [search, setSearch] = useState('');
+  const [expandedFindingId, setExpandedFindingId] = useState('');
+  const [search, setSearch] = useState('');
   const [selectedEntityId, setSelectedEntityId] = useState('');
   const [notice, setNotice] = useState('');
   const root = useRef<HTMLElement>(null);
-  const scrollWithin = (container, node) => {
+  const [reportShare, setReportShare] = useState(35);
+  const splitDrag = useRef<{ pointerId: number; y: number; share: number } | null>(null);
+  const resizeReport = (share: number) => setReportShare(Math.max(10, Math.min(70, share)));
+  const endResize = event => {
+    splitDrag.current = null;
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+      event.currentTarget.releasePointerCapture(event.pointerId);
+    }
+  };
+  const scrollWithin = (container, node, center = false) => {
     if (!container || !node) return;
     const view = container.getBoundingClientRect(),
       target = node.getBoundingClientRect();
+    if (center) {
+      container.scrollTop +=
+        target.top + target.height / 2 - (view.top + container.clientTop + container.clientHeight / 2);
+      return;
+    }
     if (target.top < view.top) container.scrollTop += target.top - view.top;
     else if (target.bottom > view.bottom)
       container.scrollTop += Math.min(target.bottom - view.bottom, target.top - view.top);
@@ -80,29 +93,22 @@ export default function ReportFindings({
     requestAnimationFrame(() =>
       scrollWithin(
         root.current?.querySelector('.rf-source-scroll'),
-        root.current?.querySelector('[data-focused="true"]')
+        root.current?.querySelector('[data-focused="true"]'),
+        true
       )
     );
   };
   const selectObservation = observation => {
     setSelectedObservation(observation.id === selectedObservation ? '' : observation.id);
     if (observation.findingId)
-      setCollapsed(previous => {
-        const n = new Set(previous);
-        n.delete(observation.findingId);
-        return n;
-      });
+      setExpandedFindingId(observation.findingId);
     if (observation.evidenceIds[0]) focus(observation.evidenceIds[0], observation.findingId);
   };
   const selectFinding = finding => {
     setFindingsOpen(true);
     onSelectFinding(finding.id);
     setSelectedObservation('');
-    setCollapsed(previous => {
-      const n = new Set(previous);
-      n.delete(finding.id);
-      return n;
-    });
+    setExpandedFindingId(finding.id);
     if (finding.evidenceIds[0]) focus(finding.evidenceIds[0], finding.id);
     requestAnimationFrame(() =>
       scrollWithin(
@@ -115,17 +121,14 @@ export default function ReportFindings({
     const finding = context.findings.find(f => f.id === activeFinding);
     if (!finding) return;
     setFindingsOpen(true);
-    setCollapsed(previous => {
-      const n = new Set(previous);
-      n.delete(finding.id);
-      return n;
-    });
+    setExpandedFindingId(finding.id);
     setReportOpen(true);
     setFocusedId(finding.evidenceIds[0] || '');
     requestAnimationFrame(() => {
       scrollWithin(
         root.current?.querySelector('.rf-source-scroll'),
-        root.current?.querySelector('[data-focused="true"]')
+        root.current?.querySelector('[data-focused="true"]'),
+        true
       );
       scrollWithin(
         root.current?.querySelector('.rf-findings-scroll'),
@@ -209,7 +212,6 @@ export default function ReportFindings({
           >
             <Pencil size={16} />
           </button>
-          {editingEntityId === entity.id && <small className="editing-badge">编辑中</small>}
           <button
             type="button"
             className="annotation-entity-action annotation-entity-action-unlink"
@@ -350,6 +352,7 @@ export default function ReportFindings({
         <div
           id={`report-source-${context.caseId}`}
           className="rf-source-scroll"
+          style={{ flexBasis: `${reportShare}%` }}
           data-testid="source-report-scroll"
         >
           <p className="rf-caption">点击高亮查看对应 Finding；选取原文可补充遗漏。</p>
@@ -411,18 +414,37 @@ export default function ReportFindings({
           {!context.reports.length && <p>尚无报告，可添加原文或直接记录影像发现。</p>}
         </div>
       )}
-      <details
-        className="rf-create"
-        open={createOpen}
-        onToggle={e => setCreateOpen(e.currentTarget.open)}
-      >
-        <summary>补充 Finding</summary>
-        {createForm}
-      </details>
+      {reportOpen && findingsOpen && <div
+        className="rf-report-divider" role="separator" tabIndex={0}
+        aria-label="调整报告原文与 Findings 高度" aria-orientation="horizontal"
+        aria-valuemin={10} aria-valuemax={70} aria-valuenow={Math.round(reportShare)}
+        aria-valuetext={`报告原文高度 ${Math.round(reportShare)}%`}
+        title="拖动调整高度；方向键微调，双击恢复默认"
+        onPointerDown={event => {
+          if (event.button !== 0) return;
+          event.preventDefault();
+          splitDrag.current = { pointerId: event.pointerId, y: event.clientY, share: reportShare };
+          event.currentTarget.setPointerCapture(event.pointerId);
+        }}
+        onPointerMove={event => {
+          const drag = splitDrag.current;
+          if (!drag || drag.pointerId !== event.pointerId || !root.current) return;
+          resizeReport(drag.share + (event.clientY - drag.y) / root.current.clientHeight * 100);
+        }}
+        onPointerUp={endResize} onPointerCancel={endResize}
+        onLostPointerCapture={() => { splitDrag.current = null; }}
+        onDoubleClick={() => setReportShare(35)}
+        onKeyDown={event => {
+          const values = { ArrowUp: reportShare - 2, ArrowDown: reportShare + 2, Home: 10, End: 70 };
+          if (!(event.key in values)) return;
+          event.preventDefault();
+          resizeReport(values[event.key]);
+        }}
+      ><span /></div>}
       <SectionHeading icon={List} title="Findings" count={context.findings.length}
         open={findingsOpen}
-        onToggle={() => setFindingsOpen(!findingsOpen)} controls={`findings-list-${context.caseId}`} />
-      <div id={`findings-list-${context.caseId}`} hidden={!findingsOpen}>
+        onToggle={() => setFindingsOpen(!findingsOpen)} controls={`findings-list-${context.caseId}`}
+        action={<>
       <input
         className="rf-search"
         aria-label="搜索 Finding"
@@ -430,29 +452,34 @@ export default function ReportFindings({
         value={search}
         onChange={e => setSearch(e.target.value)}
       />
+        <button type="button" className="rf-add-finding" title="补充 Finding"
+          aria-label="补充 Finding" aria-expanded={createOpen}
+          aria-controls={`finding-create-${context.caseId}`}
+          onClick={() => setCreateOpen(!createOpen)}><Plus size={16} aria-hidden="true" /></button></>} />
+      {createOpen && <div className="rf-create" id={`finding-create-${context.caseId}`}>
+        {createForm}
+      </div>}
+      <div className="rf-findings-body" id={`findings-list-${context.caseId}`} hidden={!findingsOpen}>
       <div className="rf-findings-scroll">
         {filtered.map(finding => {
           const number = context.findings.indexOf(finding) + 1,
             links = context.links.filter(l => l.findingId === finding.id);
           const hints = observations.filter(o => o.findingId === finding.id),
-            open = !collapsed.has(finding.id);
+            open = expandedFindingId === finding.id;
           return (
             <article
               key={finding.id}
-              className={`rf-card ${activeFinding === finding.id ? 'rf-active' : ''}`}
+              className={`rf-card ${open ? 'rf-active' : ''}`}
               data-finding-id={finding.id}
             >
               <div className="rf-card-header">
                 <button
                   aria-label={`${open ? '收起' : '展开'} F${number}`}
                   aria-expanded={open}
-                  onClick={() =>
-                    setCollapsed(previous => {
-                      const n = new Set(previous);
-                      n.has(finding.id) ? n.delete(finding.id) : n.add(finding.id);
-                      return n;
-                    })
-                  }
+                  onClick={() => {
+                    if (open) setExpandedFindingId('');
+                    else selectFinding(finding);
+                  }}
                 >
                   {open ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
                 </button>
@@ -462,6 +489,12 @@ export default function ReportFindings({
                 >
                   <strong>F{number}</strong>
                 </button>
+                <span className="rf-category-picker">
+                  <span className="rf-category-name" title={finding.category ? `${finding.category} · ${categories[finding.category] || finding.category}` : '未分类'}>
+                    {finding.category ? `${finding.category} · ${categories[finding.category] || finding.category}` : '未分类'}
+                  </span>
+                  <span className="rf-category-toggle">
+                    <ChevronDown size={13} aria-hidden="true" />
                 <select
                   className="rf-category-select"
                   aria-label={`Finding ${number} 类别`}
@@ -475,6 +508,8 @@ export default function ReportFindings({
                     <option key={code} value={code}>{code} · {String(name)}</option>
                   ))}
                 </select>
+                  </span>
+                </span>
                 <small>E · {links.length}</small>
                 <button
                   className="rf-icon"

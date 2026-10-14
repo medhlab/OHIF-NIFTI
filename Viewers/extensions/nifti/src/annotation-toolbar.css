@@ -318,3 +318,14 @@ body.nifti-case-switching .nt-popover {
   pointer-events: none;
   opacity: 0.6;
 }
+
+/* Compact context leaves vertical room for Findings. */
+#nifti-annotation-context { padding:4px 8px; }
+.nt-context-card { padding:5px 8px; column-gap:6px; font-size:12px; }
+.nt-card-heading { margin-bottom:2px; }
+.nt-target { gap:0; }
+.nt-target strong { font-size:12px; }
+.nt-target .nt-target-detail { overflow:hidden; white-space:nowrap; text-overflow:ellipsis; }
+.nt-target span { font-size:11px; }
+.nt-status[hidden] { display:none; }
+.nt-card-actions { gap:3px; }

@@ -420,3 +420,26 @@ rtx4500回执/截图 `/home/ant/projects/OHIF-NIFTI/releases/report-source-order
 18个运行源码与测试文件逐文件匹配已部署 `active-tool-de19ee1b3a` 快照 `de19ee1b3a65d0397dc0f20395ed21bb6d2bd24872dda47da42815e47aa9ba47`。沿用完整OHIF构建、67项前端测试与真实CT界面验收。报告缓存重放100份/184体积，逐例内容/ID/关系不变、0模型调用；全量新导入API核验原文顺序与干净Entity/links。当前manifest `9ce3d83a1ab345fdb85e044ca1cad420`，流水线公共版本见deploy/nifti/report-source-order.md。
 
 本次仅Git整理发布，不重启服务或改变已导入数据。此前未提交描述均为历史状态，发布证据以远端提交和PR为准。在线LLM调度、自动图像定位、真实TotalSegmentator结果及人工语义质量验收仍不在本次完成范围。后端历史annotationDisposition兼容仍保留，本次移除其UI入口。
+
+### 2026-10-14 纯图标展开式编辑模式组验收完成
+按用户进一步要求，展开矩形内也不保留手工/AI文字，仅模式图标、当前工具图标和下拉箭头，名称通过Tooltip/aria-label提供。当前编辑模式整组紫色高亮，内部ToolButton不独立高亮；图像工具未激活底色统一中性，取消绿色功能分类。未进入Entity编辑时只显示两个禁用入口（悬停提示选择Entity），活动模式展开；浏览/退出时收起；手工橡皮擦归入同一下拉。点击已活动模式不重置内部工具。
+完整OHIF构建及67项测试通过。真实CT工程Case验证初始0内部工具、AI整体紫色且子按钮透明/无文字、手工下拉橡皮擦切换、浏览收起、AI重新展开、退出后0内部工具且模式入口禁用。未绘制保存或推理。初次布局出现图像工具通用CSS误覆盖子按钮底色，排除NiftiAnnotation容器后最终验证整组同色。
+最终隔离viewer `ohif-nifti-rtx4500-viewer:mode-groups-3b3c0dbc45`；快照 `3b3c0dbc456772b5d25cf3954b18d867f251cade4c0206b168f6eeeb5e4c8fd8`；产物rtx4500 `/home/ant/projects/OHIF-NIFTI/releases/mode-groups-20261014/`。两backend及正式viewer未重启；回退active-tool-20261014/compose.preview.json仅更新viewer。本次是在PR #2创建后的新UI增量，应用尚未提交，不能将当前PR head当作本次运行快照。
+
+### 2026-10-14 Entity图标与固定紧凑右栏验收完成
+Entity行移除编辑中文字，仅铅笔高亮；空mask图标位于编号后、名称前，工程Case验证通过。右栏改为固定状态/标签页与内部报告、Findings滚动，外层overflow hidden。状态卡片实测67px，标签页37px；底部未关联Entity、刷新、补录报告收纳到默认折叠的其他功能，实测27px，字号11px。真实CT长报告和7个Findings验证外层clientHeight=scrollHeight=1384、内部列表可滚动；辅助功能展开/收起可访问。
+完整OHIF构建及67项测试通过（3条webpack warning）。当前隔离viewer `ohif-nifti-rtx4500-viewer:sidebar-fixed-a93b696af2`，快照 `a93b696af232bd082821f9c9851344648a7481fe4dd3aed560a0322be47d674a`；产物 rtx4500 `/home/ant/projects/OHIF-NIFTI/releases/sidebar-fixed-20261014/`，回退entity-status-icons-20261014/compose.preview.json仅更新viewer。两backend及正式viewer未重启。应用新UI增量尚未提交，不属于PR #2现有head。
+
+原文居中验收完成：真实CT点击F3，高亮片段中心与原文容器中心偏差-0.344px。完整OHIF构建和67项测试通过（3条webpack warning）。隔离viewer为 `ohif-nifti-rtx4500-viewer:report-center-1dc9e9809c`；产物rtx4500 `/home/ant/projects/OHIF-NIFTI/releases/report-center-20261014/`，回退sidebar-fixed-20261014/compose.preview.json。两backend及正式viewer未重启；应用增量尚未提交。
+
+### 2026-10-14 标题加号与Finding单项展开验收完成
+补充Finding改为标题右侧加号，默认不占独立行；点击开关表单，报告原文增加44px上限（当前窗口实测388px）。唯一expandedFindingId管理展开和高亮。真实CT验证F1→F2自动收起、点击原文文字切换到对应Finding、收起后0高亮、再选编号恢复单项展开，加号表单开关正常。未提交数据。完整OHIF构建和67项测试通过（3条webpack warning）；隔离viewer `ohif-nifti-rtx4500-viewer:finding-single-dd0d003d5e`，产物rtx4500 `/home/ant/projects/OHIF-NIFTI/releases/finding-single-20261014/`；回退report-center-20261014/compose.preview.json。两backend及正式viewer未重启；应用增量尚未提交。
+
+### 2026-10-14 高度分隔条验收完成
+报告与Findings之间新增10px拖动条，pointer capture支持跨区域拖动；比例限制10–70%，双击恢复35%。真实CT拖动100px：原文427→527px、Findings同步缩小，外层无溢出；70%上限仍留198px Findings，双击回到35%。完整OHIF构建及67项测试通过（3条webpack warning）。隔离viewer `ohif-nifti-rtx4500-viewer:report-split-0e77d46396`；产物rtx4500 `/home/ant/projects/OHIF-NIFTI/releases/report-split-20261014/`；回退finding-single-20261014/compose.preview.json。两backend及正式viewer未重启；应用增量尚未提交。
+
+### 2026-10-14 搜索同行及类别箭头验收完成
+搜索框移入Findings标题右侧，与加号同行；真实CT搜索emphysema仅F3、清空恢复7项。类别名称静态展示，箭头原生select区域20px宽，距名称2px且不重叠；点击名称焦点仍为BODY，点击箭头AX确认下拉expanded，Escape关闭未改分类。完整OHIF构建及67项测试通过（3条webpack warning）。当前隔离viewer `ohif-nifti-rtx4500-viewer:finding-category-6af068a82c`；产物rtx4500 `/home/ant/projects/OHIF-NIFTI/releases/finding-category-20261014/`；回退report-split-20261014/compose.preview.json。两backend及正式viewer未重启；应用增量尚未提交。
+
+### 2026-10-14 界面增量提交整理
+此前各节“应用增量尚未提交”为当时状态，本轮统一整理为独立界面PR，基于已合并PR #2的main。范围包括纯图标编辑模式组、Entity状态图标、固定紧凑右栏和辅助功能折叠、原文居中、单项Finding展开、标题加号及搜索、类别箭头点击和可拖动高度分隔条。19个运行源码/测试文件逐文件匹配finding-category-6af068a82c部署快照；沿用已通过的完整构建、67项测试和真实CT交互验收，本次Git整理不重启服务、不改数据。
