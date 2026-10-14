@@ -15,6 +15,12 @@ export const sources = new Map<string, any>();
 export let config: any = {};
 const metadata = new Map<string, any>();
 const reservations = new Map<string, number>();
+function defaultWindow(descriptor) {
+  // Match OHIF's Lung preset for CT; pixels have already been scaled to HU.
+  return descriptor.modality === 'CT'
+    ? { windowCenter: -600, windowWidth: 1500 }
+    : { windowCenter: (descriptor.min + descriptor.max) / 2, windowWidth: Math.max(1, descriptor.max - descriptor.min) };
+}
 export function reserve(key: string, bytes: number) {
   const used = [...reservations].reduce((sum, [k, n]) => sum + (k === key ? 0 : n), 0);
   if (used + bytes > (config.niftiWorkingSetBytes || 1.5 * 1024 ** 3)) {
@@ -70,7 +76,7 @@ export function registerNifti(appConfig) {
       rowPixelSpacing: plane.rowPixelSpacing, columnPixelSpacing: plane.columnPixelSpacing,
       sizeInBytes: pixels.byteLength, voxelManager, getPixelData: () => pixels,
       minPixelValue: d.min, maxPixelValue: d.max,
-      windowCenter: (d.min + d.max) / 2, windowWidth: Math.max(1, d.max - d.min),
+      ...defaultWindow(d),
     };
     })();
     promise.catch(() => setTimeout(() => {
@@ -160,6 +166,7 @@ export function openStreaming(descriptor, transport) {
 
 function populateMetadata(source) {
   const { descriptor: d, sourceKey } = source;
+  const voi = defaultWindow(d);
   const a = d.voxelToLPS;
   const spacing = [0, 1, 2].map(c => Math.hypot(a[0][c], a[1][c], a[2][c]));
   const dirs = [0, 1, 2].map(c => [0, 1, 2].map(r => a[r][c] / spacing[c]));
@@ -179,6 +186,7 @@ function populateMetadata(source) {
       ImagePositionPatient: position, ImageOrientationPatient: [...dirs[0], ...dirs[1]],
       PixelSpacing: [spacing[1], spacing[0]], SliceThickness: spacing[2],
       Modality: d.modality, SeriesNumber: 1, SeriesDescription: d.name,
+      WindowCenter: voi.windowCenter, WindowWidth: voi.windowWidth,
       StudyDescription: d.name, PatientID: 'NIFTI', PatientName: { Alphabetic: d.name },
       SamplesPerPixel: 1, PhotometricInterpretation: 'MONOCHROME2',
       BitsAllocated: source.scalarData.BYTES_PER_ELEMENT * 8,
@@ -200,7 +208,7 @@ function populateMetadata(source) {
       // These are explicitly internal references, never used for DICOM export.
       sopCommonModule: { sopClassUID: INTERNAL_CLASS, sopInstanceUID: instance.SOPInstanceUID, sourceType: 'nifti' },
       modalityLutModule: { rescaleSlope: 1, rescaleIntercept: 0 },
-      voiLutModule: { windowCenter: [(d.min + d.max) / 2], windowWidth: [Math.max(1, d.max - d.min)] },
+      voiLutModule: { windowCenter: [voi.windowCenter], windowWidth: [voi.windowWidth] },
     });
     return instance;
   });
