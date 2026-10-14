@@ -1,20 +1,24 @@
 # OHIF 单 CT 标注数据标准与接口设计
 
-- 文档版本：1.3；契约版本：`annotation/v1`；更新日期：2026-10-13，Asia/Shanghai。
+- 文档版本：1.4；契约版本：`annotation/v1`；更新日期：2026-10-13，Asia/Shanghai。
 - 状态：新系统设计基线；人工单 CT 子集已实现，实际路由与字段见 [第一版实现记录](ANNOTATION_V1_IMPLEMENTATION.md)。本文包含后续演进目标。
 - 实现仓库：[medhlab/OHIF-NIFTI](https://github.com/medhlab/OHIF-NIFTI)，源码参考基线 `ca7cf52cf1b049fdf0a5aa70b74d96dc35ebc1a6`。
 
 首版围绕单次检查的单 CT，完成报告、Finding、Entity、mask 与人工处理闭环。复用 OHIF 的浏览、编辑和存储能力；没有旧数据兼容或迁移任务。本文替代 1.0 的旧数据映射及候选替换人工 mask 设计。
 
+Finding 是报告或影像中的发现/陈述；Entity 是可定位、可关联和可编辑的标注对象/区域。二者都不等同于“病灶”或 lesion，不能从名称推断病理属性。界面仅使用 Finding / Entity；报告原文、模型观察词语及用户名称保持原样，不迁移现有记录。
+
+当前实现的类别位于 Finding 和报告观察；顶部显示当前 Entity 的关联类别，可能为空或多个。此显示不会新建 Entity 类别字段，也不会把 Finding 类别复制为 Entity 固有属性。
+
 ## 1 已确认规则
 
 - Finding 可以没有 Entity；Entity 可以暂未关联 Finding，也可以尚无非空 mask。
-- Finding 与 Entity 多对多。同病灶可人工明确关联到共享 Entity，保留各 Finding 的原文证据。首版不实现自动病灶识别、去重、合并或相关审核流程。
+- Finding 与 Entity 多对多。描述同一对象/区域的 Finding 可由人工明确关联到共享 Entity，保留各 Finding 的原文证据。首版不实现自动对象识别、去重、合并或相关审核流程。
 - 每 Entity 在参考 CT 上最多一个主 mask，保留不可变历史版本。不同 Entity 的二值 mask 可以重叠。
 - 有人工 mask 的目标直接使用人工结果，自动模型流程跳过该目标，不生成替换候选，不覆盖人工内容。此规则作用于目标，不能据此跳过同病例其他未标注目标。
 - 正式写入使用病例级修订控制；正式数据变化后需要重新确认完成。
 - 当前任务处理完后，由用户标记病例完成；暂不区分标注者与审核者，不设二级审核。显示任务集合的完成百分比。
-- 首版以病灶/异常区域标注为主，类别采用 ReXGroundingCT 公布的 14 类胸部异常。解剖结构直接使用 TotalSegmentator 结果作为辅助图层，不纳入人工病灶标注任务。
+- 首版以 Entity 的空间标注为主，类别采用 ReXGroundingCT 公布的 14 类胸部异常。解剖结构直接使用 TotalSegmentator 结果作为辅助图层，不纳入人工 Entity 标注任务。
 
 多序列、多模态、跨检查追踪、完整 ontology 图、训练交互档案及完整 ReX 导出不在首版范围。
 
@@ -28,12 +32,12 @@
 | Volume | volumeId、contentHash、geometryHash、hashScheme、geometry | 不可变参考 CT，路径不作为身份 |
 | ReportVersion | reportId、version、sections、contentHash | 报告原文的不可变版本；章节含 sectionId/name/text/textSha256 |
 | Evidence | evidenceId、reportId、reportVersion、sectionId、start、end、quote | 精确原文证据 |
-| Finding | findingId、text、evidenceIds、category、assertion、origin、revision | 任务发现，描述、原文及类别分开 |
-| Entity | entityId、name、labels、anatomy、primaryMaskId、origin、revision | 可独立定位和编辑的实例 |
+| Finding | findingId、text、evidenceIds、category、assertion、origin、revision | 发现或陈述，描述、原文及类别分开 |
+| Entity | entityId、name、labels、anatomy、primaryMaskId、origin、revision | 显式关联的可定位标注对象或区域，不限定为 lesion |
 | FindingEntityLink | linkId、findingId、entityId | 显式多对多关联，同一对最多一个有效关系 |
 | Mask | maskId、entityId、volumeId、latestVersion、authority | Entity 主 mask；authority 为 draft 或 human |
 | MaskVersion | maskId、version、parentVersion、geometryHash、fileSha256、voxelHash、voxelCount、isEmptyDraft、origin | 不可变二值内容版本 |
-| AnatomyLayer | layerId、caseId、volumeId、assetRef、geometryHash、labelMap、modelInfo、source | 解剖辅助图层，保留模型来源，不冒充人工病灶 |
+| AnatomyLayer | layerId、caseId、volumeId、assetRef、geometryHash、labelMap、modelInfo、source | 解剖辅助图层，保留模型来源，不冒充人工 Entity 标注 |
 | Candidate | candidateId、caseId、revision、kind、producer、runId、sourceKey、payload、status | 待处理的模型/外部提议，与正式标注分开 |
 | Decision | decisionId、candidateId、action、actorId、reason、createdAt | 接受或驳回记录 |
 | Completion | caseId、completedRevision、actorId、createdAt | 针对指定病例修订的完成记录 |
@@ -45,7 +49,7 @@ Coding 统一为 `{system, version, code, display}`。Finding.category 可空；
 
 Finding.assertion 为 present/absent/uncertain/unspecified，表达描述中的存在性，不能从有无 mask 推导。
 
-### 病灶类别与结构图层
+### Finding 类别与结构图层
 
 首版 Finding.category 使用 `system=urn:rexgroundingct:finding-category`，代码与官方公布的胸部异常类别一致。中文为界面译名，保留官方英文名称。暂未分类可为 null；不按类别创造新 Entity 身份。Entity 标签独立于 Finding 分类，初版不要求再填一套重复类别。
 
@@ -68,11 +72,11 @@ Finding.assertion 为 present/absent/uncertain/unspecified，表达描述中的�
 
 该表覆盖局灶及弥漫性异常，不能要求每个 Entity 都是一个孤立结节。依据：[ReXGroundingCT 官方类别](https://rexrank.ai/ReXGroundingCT/)、[官方数据说明](https://huggingface.co/datasets/surajpaib/ReXGroundingCT)。
 
-CT-RATE 官方仓库提供 [TotalSegmentator 结果目录](https://huggingface.co/datasets/ibrahimhamamci/CT-RATE/tree/main/dataset/ts_seg)，其中 `ts_total` 用于解剖结构；目录还列出结节及积液等专项结果，不将这些专项病灶结果混入默认结构图层。远端提供结果不等于团队服务器已经下载、病例覆盖完整或网格已验证。接入时核验病例 ID、参考 CT 版本、尺寸、仿射及 label value 到结构名称映射；不能凭同名文件假定对齐。
+CT-RATE 官方仓库提供 [TotalSegmentator 结果目录](https://huggingface.co/datasets/ibrahimhamamci/CT-RATE/tree/main/dataset/ts_seg)，其中 `ts_total` 用于解剖结构；目录还列出结节及积液等专项结果，不将这些专项分割结果混入默认结构图层。远端提供结果不等于团队服务器已经下载、病例覆盖完整或网格已验证。接入时核验病例 ID、参考 CT 版本、尺寸、仿射及 label value 到结构名称映射；不能凭同名文件假定对齐。
 
-AnatomyLayer 默认只读，可显示/隐藏和调整透明度；不自动创建 Finding/病灶 Entity，不标为 human mask，也不占用病灶 Entity 的主 mask。modelInfo 保存可核验的任务、模型版本和标签表版本，未知字段保持 null。优先复用数据集已提供结果；缺失时标记未提供，不据此自动启动推理。需要补跑时另行安排。
+AnatomyLayer 默认只读，可显示/隐藏和调整透明度；不自动创建 Finding/Entity，不标为 human mask，也不占用Entity 的主 mask。modelInfo 保存可核验的任务、模型版本和标签表版本，未知字段保持 null。优先复用数据集已提供结果；缺失时标记未提供，不据此自动启动推理。需要补跑时另行安排。
 
-GET `/cases/{caseId}/context` 包含 anatomyLayers 描述，通过 GET `/cases/{caseId}/anatomy-layers/{layerId}/file` 读取受控资产。初版在数据注册时挂接已存在的结构结果，不要求开发完整自动分割调度接口。结构图层显示或加载变化不影响病灶完成状态，结构结果缺失不阻塞病灶完成。
+GET `/cases/{caseId}/context` 包含 anatomyLayers 描述，通过 GET `/cases/{caseId}/anatomy-layers/{layerId}/file` 读取受控资产。初版在数据注册时挂接已存在的结构结果，不要求开发完整自动分割调度接口。结构图层显示或加载变化不影响Entity 完成状态，结构结果缺失不阻塞Entity 完成。
 
 ## 3 原文与空间标准
 
@@ -102,7 +106,7 @@ mask 保存为参考 CT 网格中的二值 NIfTI。fileSha256 校验存储文件
 
 Finding、Entity、关联、报告当前版本、mask 内容等正式变更使原完成记录失效。新待处理候选出现后，病例显示需继续处理；候选处理完且正式修订未变时，可以恢复有效完成状态。历史完成记录不删除。显示颜色、排序或面板展开不影响完成。
 
-进度默认以固定 Worklist 为单位：`完成百分比 = 当前有效完成病例数 / 总病例数 × 100%`，同时显示 `已完成数 / 总数`；空集合显示“暂无任务”，不显示 100%。这是百分比的首版实现口径，后续若需 Entity 级进度再单独定义，不混用候选处理率、病例完成率或病灶数量。
+进度默认以固定 Worklist 为单位：`完成百分比 = 当前有效完成病例数 / 总病例数 × 100%`，同时显示 `已完成数 / 总数`；空集合显示“暂无任务”，不显示 100%。这是百分比的首版实现口径，后续若需 Entity 级进度再单独定义，不混用候选处理率、病例完成率或Entity 数量。
 
 ## 6 接口
 
@@ -143,7 +147,7 @@ context 中返回完整的小型语义对象及 mask 描述，不返回体素字
 
 ## 8 实现验收与剩余细节
 
-验收至少覆盖：两 Finding 共享 Entity；无报告/未关联目标；同病例多个目标重叠；空草稿；人工 mask 目标被自动流程跳过；推理期间人工保存竞态；保存重试不重复；组合保存失败无半次结果；完成后修改失效；候选处理完后完成；固定任务集合百分比；结构图层不占病灶主 mask、不进入病灶完成分母。
+验收至少覆盖：两 Finding 共享 Entity；无报告/未关联目标；同病例多个目标重叠；空草稿；人工 mask 目标被自动流程跳过；推理期间人工保存竞态；保存重试不重复；组合保存失败无半次结果；完成后修改失效；候选处理完后完成；固定任务集合百分比；结构图层不占Entity 主 mask、不进入Entity 完成分母。
 
 用户已确认业务边界。实现阶段补充机器可读 schema/OpenAPI、固定 ReX 类别表快照、TotalSegmentator 结构标签映射、上传限制、任务集合入口、认证身份和文件提交恢复机制，避免继续扩大业务决策范围。
 

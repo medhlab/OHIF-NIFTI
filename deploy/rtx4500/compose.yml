@@ -1,0 +1,54 @@
+name: ohif-nifti-rtx4500
+services:
+  backend:
+    image: ohif-nifti-rtx4500-backend:20261011
+    build:
+      context: ../source
+      dockerfile: ../deployment/backend.Dockerfile
+    command: [python, -m, monailabel.main, start_server, --app, /code/apps/radiology, --studies, /code/studies, --conf, models, segmentation, --conf, use_pretrained_model, 'false', -p, '8002']
+    environment:
+      ENABLE_NIFTI_LIBRARY: 'true'
+      ENABLE_NIFTI_EDITING: 'true'
+      ENABLE_NIFTI_STREAMING: 'true'
+      ENABLE_NIFTI_AI: 'false'
+      ENABLE_NNINTERACTIVE: 'false'
+      ENABLE_MEDGEMMA: 'false'
+      ENABLE_VOXTELL: 'false'
+      ENABLE_SAM_MODELS: 'false'
+      MONAI_LABEL_DCMQI_DOWNLOAD: skip
+      NIFTI_IMAGES_DIR: /code/nifti_images
+      NIFTI_STREAM_CACHE_DIR: /code/nifti_stream_cache
+      NIFTI_STREAM_CACHE_MAX_BYTES: '10737418240'
+      NIFTI_ACCEL_REDIRECT_PREFIX: /_nifti-files
+      NIFTI_STREAM_ACCEL_REDIRECT_PREFIX: /_nifti-stream-cache
+      NIFTI_IMPORT_ROOTS: '["/datasets/ct-rate", "/datasets/acceptance"]'
+    volumes:
+      - /media/ant/新加卷1/ct-rate-v2/dataset:/datasets/ct-rate:ro
+      - ../state/acceptance:/datasets/acceptance:ro
+      - ../state/images:/code/nifti_images
+      - ../state/stream-cache:/code/nifti_stream_cache
+      - ../state/studies:/code/studies
+      - ../state/drafts:/code/nifti_segs
+      - ../state/predictions:/code/predictions
+    shm_size: 2gb
+    restart: unless-stopped
+    healthcheck:
+      test: [CMD, python, -c, "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8002/health', timeout=5).read()"]
+      interval: 15s
+      timeout: 10s
+      start_period: 120s
+  viewer:
+    image: ohif-nifti-rtx4500-viewer:20261012-ca7cf52
+    build:
+      context: ../source
+      dockerfile: ../deployment/frontend.Dockerfile
+    ports: ['127.0.0.1:1026:1026', '100.104.172.26:1026:1026']
+    volumes:
+      - ./nginx.conf:/etc/nginx/nginx.conf:ro
+      - ../state/images:/var/nifti-images:ro
+      - ../state/stream-cache:/var/nifti-stream-cache:ro
+      - ./manifests:/var/www/manifests:ro
+    depends_on:
+      backend:
+        condition: service_healthy
+    restart: unless-stopped

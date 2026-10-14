@@ -318,3 +318,6 @@ Viewers/platform/app/.recipes/Nginx-Orthanc/config/ssl/
 *.db
 *.sqlite
 *.sqlite3
+
+# Finder metadata at any workspace depth
+**/.DS_Store
