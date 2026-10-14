@@ -26,7 +26,11 @@ import {
   segmentation as csToolsSegmentation,
 } from '@cornerstonejs/tools';
 import { updateLabelmapSegmentationImageReferences } from '@cornerstonejs/tools/segmentation/updateLabelmapSegmentationImageReferences';
-import { triggerSegmentationRepresentationModified, triggerSegmentationDataModified, triggerSegmentationModified } from '@cornerstonejs/tools/segmentation/triggerSegmentationEvents';
+import {
+  triggerSegmentationRepresentationModified,
+  triggerSegmentationDataModified,
+  triggerSegmentationModified,
+} from '@cornerstonejs/tools/segmentation/triggerSegmentationEvents';
 import {
   cache,
   imageLoader,
@@ -133,9 +137,17 @@ const commandsModule = ({
   } = servicesManager.services;
 
   const nnEditor = createNnInteractiveController({
-    servicesManager, cache, metaData, csToolsSegmentation, csToolsEnums,
-    eventTarget, axios, toolboxState, patchStackLabelmapModifiedSlices,
-    triggerSegmentationDataModified, triggerSegmentationModified,
+    servicesManager,
+    cache,
+    metaData,
+    csToolsSegmentation,
+    csToolsEnums,
+    eventTarget,
+    axios,
+    toolboxState,
+    patchStackLabelmapModifiedSlices,
+    triggerSegmentationDataModified,
+    triggerSegmentationModified,
   });
 
   // Define a context menu controller for use with any context menus
@@ -1202,8 +1214,7 @@ const commandsModule = ({
     const representationCount = viewportIds.reduce((total, viewportId) => {
       const representations = segmentationService.getSegmentationRepresentations(viewportId) || [];
       return (
-        total +
-        representations.filter(rep => niftiSegmentationIds.has(rep.segmentationId)).length
+        total + representations.filter(rep => niftiSegmentationIds.has(rep.segmentationId)).length
       );
     }, 0);
 
@@ -1283,11 +1294,7 @@ const commandsModule = ({
         segmentations,
       };
     });
-    const knownBuffers = new Set<object>([
-      ...niftiBuffers,
-      ...sourceImageBuffers,
-      ...actorBuffers,
-    ]);
+    const knownBuffers = new Set<object>([...niftiBuffers, ...sourceImageBuffers, ...actorBuffers]);
     const performanceMemory = (globalThis.performance as any)?.memory;
 
     return {
@@ -1909,18 +1916,39 @@ const commandsModule = ({
     }: HangingProtocolParams): boolean => {
       const toUseStudyInstanceUID = activeStudyUID || StudyInstanceUID;
       try {
-        const native = displaySetService.getActiveDisplaySets().find(ds => ds.sourceType === 'nifti');
-        const requestedProtocol = hangingProtocolService.getProtocolById(protocolId || hangingProtocolService.getState().protocolId);
-        const needsVolume = requestedProtocol?.stages?.some(stage => stage.viewports?.some(viewport =>
-          ['volume', 'volume3d', 'orthographic'].includes(viewport.viewportOptions?.viewportType)));
+        const native = displaySetService
+          .getActiveDisplaySets()
+          .find(ds => ds.sourceType === 'nifti');
+        const requestedProtocol = hangingProtocolService.getProtocolById(
+          protocolId || hangingProtocolService.getState().protocolId
+        );
+        const needsVolume = requestedProtocol?.stages?.some(stage =>
+          stage.viewports?.some(viewport =>
+            ['volume', 'volume3d', 'orthographic'].includes(viewport.viewportOptions?.viewportType)
+          )
+        );
         if (needsVolume && native?.nativeIsComplete && !native.nativeIsComplete()) {
-          native.ensureNativeComplete().then(() => {
-            if (displaySetService.getActiveDisplaySets().includes(native)) actions.setHangingProtocol({
-              activeStudyUID, StudyInstanceUID, protocolId, stageId, stageIndex, reset,
+          native
+            .ensureNativeComplete()
+            .then(() => {
+              if (displaySetService.getActiveDisplaySets().includes(native))
+                actions.setHangingProtocol({
+                  activeStudyUID,
+                  StudyInstanceUID,
+                  protocolId,
+                  stageId,
+                  stageIndex,
+                  reset,
+                });
+            })
+            .catch(error => {
+              if (error.name !== 'AbortError')
+                uiNotificationService.show({
+                  title: 'NIfTI',
+                  message: error.message,
+                  type: 'error',
+                });
             });
-          }).catch(error => {
-            if (error.name !== 'AbortError') uiNotificationService.show({ title: 'NIfTI', message: error.message, type: 'error' });
-          });
           return false;
         }
         // Stores in the state the display set selector id to displaySetUID mapping
@@ -2097,12 +2125,18 @@ const commandsModule = ({
         // A native case has one source: additional grid cells should show that
         // source rather than wait for a second DICOM series that does not exist.
         const activeViewport = state.viewports.get(state.activeViewportId);
-        const nativeSource = activeViewport?.displaySetInstanceUIDs?.some(uid =>
-          displaySetService.getDisplaySetByUID(uid)?.sourceType === 'nifti');
-        const findOrCreateViewport = (position: number, positionId: string, options: Record<string, unknown>) => {
+        const nativeSource = activeViewport?.displaySetInstanceUIDs?.some(
+          uid => displaySetService.getDisplaySetByUID(uid)?.sourceType === 'nifti'
+        );
+        const findOrCreateViewport = (
+          position: number,
+          positionId: string,
+          options: Record<string, unknown>
+        ) => {
           const candidate = defaultFindOrCreateViewport(position, positionId, options);
           if (!nativeSource || candidate?.displaySetInstanceUIDs?.length) return candidate;
-          const { viewportId, presentationIds, ...viewportOptions } = activeViewport.viewportOptions || {};
+          const { viewportId, presentationIds, ...viewportOptions } =
+            activeViewport.viewportOptions || {};
           return {
             displaySetInstanceUIDs: [...activeViewport.displaySetInstanceUIDs],
             displaySetOptions: activeViewport.displaySetOptions?.map(options => ({ ...options })),
@@ -2847,6 +2881,12 @@ const commandsModule = ({
         niftiMemoryLedger.releaseOwner(responseMemoryOwner);
       }
     },
+    getNnPromptState() {
+      return nnEditor.getPromptState();
+    },
+    manageNnPrompts(options) {
+      return nnEditor.managePrompts(options);
+    },
     async resetNninter() {
       if (!toolboxState.getLocked()) nnEditor.reset();
     },
@@ -2912,7 +2952,8 @@ const commandsModule = ({
       const { textPrompts } = normalizeNnInteractiveArgs(input, legacyOptions);
       if (textPrompts) {
         uiNotificationService.show({
-          title: 'VoxTell', message: '稳定版 v1 暂不支持文本分割；画笔与 nnInteractive 可正常使用。',
+          title: 'VoxTell',
+          message: '稳定版 v1 暂不支持文本分割；画笔与 nnInteractive 可正常使用。',
           type: 'warning',
         });
         return;
@@ -3589,7 +3630,11 @@ const commandsModule = ({
       )[0];
       if (!currentDisplaySets) return;
       if (currentDisplaySets.sourceType === 'nifti') {
-        uiNotificationService.show({ title: 'NIfTI', message: '原生 NIfTI 请使用 NIfTI 面板导出；此原图不支持 PACS 保存。', type: 'info' });
+        uiNotificationService.show({
+          title: 'NIfTI',
+          message: '原生 NIfTI 请使用 NIfTI 面板导出；此原图不支持 PACS 保存。',
+          type: 'info',
+        });
         return;
       }
 
@@ -3647,11 +3692,15 @@ const commandsModule = ({
         })
         .filter(Boolean) as ArrayLike<number>[];
 
-      if (slices.length !== labelmapImageIds.length || sourceSops.some(uid => !uid)
-        || new Set(sourceSops).size !== sourceSops.length) {
+      if (
+        slices.length !== labelmapImageIds.length ||
+        sourceSops.some(uid => !uid) ||
+        new Set(sourceSops).size !== sourceSops.length
+      ) {
         uiNotificationService.show({
           title: 'MONAI Label',
-          message: 'Labelmap slices or source SOP references are incomplete. Reload the source before saving.',
+          message:
+            'Labelmap slices or source SOP references are incomplete. Reload the source before saving.',
           type: 'warning',
         });
         return;
@@ -4067,6 +4116,8 @@ const commandsModule = ({
     runAiSegmentation: actions.runAiSegmentation,
     sam2: actions.sam2,
     initNninter: actions.initNninter,
+    getNnPromptState: actions.getNnPromptState,
+    manageNnPrompts: actions.manageNnPrompts,
     resetNninter: actions.resetNninter,
     medGemma: actions.medGemma,
     nninter: actions.nninter,
@@ -4092,4 +4143,3 @@ const commandsModule = ({
 };
 
 export default commandsModule;
-

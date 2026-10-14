@@ -1,6 +1,19 @@
 import React, { useEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { useSystem, useToolbar } from '@ohif/core';
-import { Icons, ToolSettings } from '@ohif/ui-next';
+import {
+  Button,
+  Tooltip,
+  TooltipTrigger,
+  TooltipContent,
+  ToolButton,
+  ToolSettings,
+  ToolButtonList,
+  ToolButtonListDefault,
+  ToolButtonListDivider,
+  ToolButtonListDropDown,
+  ToolButtonListItem,
+} from '@ohif/ui-next';
 import { eventTarget } from '@cornerstonejs/core';
 import { Enums } from '@cornerstonejs/tools';
 import {
@@ -12,7 +25,7 @@ import {
   Minus,
   Zap,
   Loader2,
-  ChevronDown,
+  Settings2,
 } from 'lucide-react';
 import { toolboxState } from '../../default/src/stores/toolboxState';
 import './annotation-tools.css';
@@ -28,7 +41,7 @@ const labels = {
   Threshold: '阈值',
   Shapes: '形状',
   nninter: '运行 AI',
-  resetNninter: '重置提示',
+  resetNninter: '清空提示',
   InterpolateLabelmap: '跨层插值',
   SegmentBidirectional: '长短径',
 };
@@ -43,17 +56,39 @@ const settingLabels = {
   Range: '范围',
 };
 
-export default function AnnotationTools({ beforeAI, beforeManual, enableAI, enableEditing, sourceKey }) {
-  const { servicesManager } = useSystem();
+export default function AnnotationTools({
+  beforeAI,
+  beforeManual,
+  enableAI,
+  enableEditing,
+  editing,
+  sourceKey,
+  expanded,
+  onExpandedChange,
+}) {
+  const { servicesManager, commandsManager } = useSystem();
   const { uiNotificationService } = servicesManager.services;
   const anatomyReadOnly = activeAnatomyReadOnly(servicesManager);
+  const promptState = commandsManager.run('getNnPromptState') || {
+    prompts: [],
+    undoCount: 0,
+    redoCount: 0,
+  };
+  const managePrompt = (action, uid?) => {
+    if (locked || anatomyReadOnly) return;
+    Promise.resolve(commandsManager.run('manageNnPrompts', { action, uid })).catch(error =>
+      uiNotificationService.show({ title: 'AI 提示', message: error.message, type: 'error' })
+    );
+  };
   const ai = useToolbar({ buttonSection: 'aiToolBoxSection' });
   const primary = useToolbar({ buttonSection: 'primary' });
   const brush = useToolbar({ buttonSection: 'brushToolsSection' });
   const manual = useToolbar({ buttonSection: 'segmentationToolboxToolsSection' });
   const utilities = useToolbar({ buttonSection: 'segmentationToolboxUtilitySection' });
   const [mode, setMode] = useState(enableEditing ? 'manual' : 'ai');
-  const [collapsed, setCollapsed] = useState(false);
+  const collapsed = !expanded;
+  const setCollapsed = value =>
+    onExpandedChange(!(typeof value === 'function' ? value(collapsed) : value));
   const bodyId = `annotation-tools-${sourceKey || 'pending'}`;
   const [, refresh] = useState(0);
   const [pending, setPending] = useState(false);
@@ -68,20 +103,21 @@ export default function AnnotationTools({ beforeAI, beforeManual, enableAI, enab
     ...brush.toolbarButtons,
     ...manual.toolbarButtons.filter(b => b.id === 'Shapes'),
   ];
-  const tools = mode === 'ai' ? aiTools : manualTools;
-  const actions =
-    mode === 'ai'
-      ? ai.toolbarButtons.filter(b => ['nninter', 'resetNninter'].includes(b.id))
-      : utilities.toolbarButtons;
   const activeTool = [...aiTools, ...manualTools].find(b => b.componentProps.isActive);
-  const browsing = primary.toolbarButtons.some(b => b.id === 'Pan' && b.componentProps.isActive);
-  const activeOptions = tools.find(b => b.componentProps.isActive)?.componentProps.options;
+  const activeOptions = activeTool?.componentProps.options;
   const change = fn => {
     fn();
     refresh(v => v + 1);
   };
   useEffect(() => {
-    const activated = () => { sequence.current++; setPending(false); };
+    const activated = event => {
+      const name = event.detail.toolName;
+      if (['Probe2', 'RectangleROI2', 'PlanarFreehandROI2', 'PlanarFreehandROI3'].includes(name))
+        setMode('ai');
+      else if (/Brush|Eraser|Scissors/.test(name)) setMode('manual');
+      sequence.current++;
+      setPending(false);
+    };
     eventTarget.addEventListener(Enums.Events.TOOL_ACTIVATED, activated);
     const timer = setInterval(() => refresh(v => v + 1), 250);
     return () => {
@@ -114,7 +150,8 @@ export default function AnnotationTools({ beforeAI, beforeManual, enableAI, enab
     return () => document.removeEventListener('keydown', handler);
   }, [mode, locked]);
   const browse = () => {
-    sequence.current++; setPending(false);
+    sequence.current++;
+    setPending(false);
     primary.onInteraction({ itemId: 'Pan' });
   };
   const activate = async (id, nextMode = mode) => {
@@ -123,14 +160,20 @@ export default function AnnotationTools({ beforeAI, beforeManual, enableAI, enab
     const button = [...ai.toolbarButtons, ...manualTools, ...utilities.toolbarButtons].find(
       b => b.id === id
     );
-    if (activeAnatomyReadOnly(servicesManager) || !button || button.componentProps.disabled || (nextMode === 'ai' && locked)) return;
-    if ([...aiTools, ...manualTools].some(b => b.id === id) && button.componentProps.isActive) {
-      browse();
+    if (
+      !editing ||
+      activeAnatomyReadOnly(servicesManager) ||
+      !button ||
+      (nextMode === 'ai' && (button.componentProps.disabled || locked || promptState.busy))
+    )
       return;
+    if ([...aiTools, ...manualTools].some(b => b.id === id) && button.componentProps.isActive) {
+      return; // Selecting the same tool keeps it active; Browse is explicit.
     }
-    setPending(nextMode === 'ai');
+    setPending(true);
     try {
       if (nextMode === 'ai') await beforeAI?.();
+      else await beforeManual?.();
       if (token !== sequence.current) return;
       if (nextMode === 'ai') toolboxState.setSelectedModel('nnInteractive');
       // The shared toolbar dispatch applies current options and mutually
@@ -143,55 +186,68 @@ export default function AnnotationTools({ beforeAI, beforeManual, enableAI, enab
       if (token === sequence.current) setPending(false);
     }
   };
-  const startManual = async () => {
-    if (pending) return;
-    const token = ++sequence.current;
-    setMode('manual'); setCollapsed(false); setPending(true);
-    try {
-      await beforeManual?.();
-      if (token !== sequence.current) return;
-      if (activeAnatomyReadOnly(servicesManager)) throw Error('结构辅助图层只读，请先选择病灶后编辑。');
-      // Starting manual editing keeps the brush active on repeated clicks.
-      // Read toolbar options after preparation rather than stale disabled props.
-      ai.onInteraction({ itemId: 'Brush' });
-    } catch (error) {
-      if (token === sequence.current) {
-        browse();
-        uiNotificationService.show({ title: '手工编辑', message: error.message, type: 'error' });
-      }
-    } finally {
-      if (token === sequence.current) setPending(false);
-    }
-  };
   const selectMode = next => {
     if (next === mode) return;
     browse();
     setMode(next);
   };
-  const renderTool = (tool, action = false) => {
-    const props = tool.componentProps;
-    const disabled = anatomyReadOnly || pending || props.disabled || (mode === 'ai' && locked);
+  const toolProps = (tool, nextMode) => ({
+    ...tool.componentProps,
+    id: tool.id,
+    label: labels[tool.id] || tool.componentProps.label,
+    tooltip: tool.componentProps.isActive ? '当前工具 · 使用浏览按钮切换' : undefined,
+    disabled:
+      !editing ||
+      anatomyReadOnly ||
+      pending ||
+      !sourceKey ||
+      (nextMode === 'ai'
+        ? tool.componentProps.disabled || locked || promptState.busy
+        : utilities.toolbarButtons.includes(tool) && tool.componentProps.disabled),
+    disabledText: !editing
+      ? '请先点击 Entity 的编辑按钮'
+      : anatomyReadOnly
+        ? '结构辅助图层只读，请选择 Entity 后编辑'
+        : locked && nextMode === 'ai'
+          ? '请先解锁 AI 提示'
+          : pending
+            ? '正在准备标注'
+            : tool.componentProps.disabledText,
+  });
+  const renderTool = (tool, nextMode) => (
+    <ToolButton
+      key={tool.id}
+      {...toolProps(tool, nextMode)}
+      onInteraction={() => activate(tool.id, nextMode)}
+    />
+  );
+  const renderGroup = (items, nextMode, label) => {
+    if (!items.length) return null;
+    const selected = items.find(t => t.componentProps.isActive) || items[0];
     return (
-      <button
-        key={tool.id}
-        type="button"
-        data-tool={tool.id}
-        aria-label={labels[tool.id] || props.label}
-        aria-pressed={action ? undefined : !!props.isActive}
-        disabled={disabled}
-        title={
-          disabled
-            ? anatomyReadOnly ? '结构辅助图层只读，请选择病灶后编辑' : props.disabledText || (locked ? '请先解锁 AI 提示' : '正在准备原图')
-            : !action && props.isActive
-              ? '再次点击返回浏览'
-            : props.tooltip || props.label
-        }
-        onClick={() => activate(tool.id)}
-        className={action ? 'at-action' : 'at-tool'}
-      >
-        <Icons.ByName name={props.icon} />
-        <span>{labels[tool.id] || props.label}</span>
-      </button>
+      <ToolButtonList aria-label={label}>
+        <ToolButtonListDefault>{renderTool(selected, nextMode)}</ToolButtonListDefault>
+        <ToolButtonListDivider
+          className={selected.componentProps.isActive ? 'opacity-0' : 'opacity-100'}
+        />
+        <div
+          className="nt-tool-dropdown"
+          aria-label={label}
+        >
+          <ToolButtonListDropDown>
+            {items.map(tool => (
+              <ToolButtonListItem
+                key={tool.id}
+                {...toolProps(tool, nextMode)}
+                data-tool={tool.id}
+                onSelect={() => activate(tool.id, nextMode)}
+              >
+                {labels[tool.id] || tool.componentProps.label}
+              </ToolButtonListItem>
+            ))}
+          </ToolButtonListDropDown>
+        </div>
+      </ToolButtonList>
     );
   };
   return (
@@ -199,171 +255,247 @@ export default function AnnotationTools({ beforeAI, beforeManual, enableAI, enab
       className="annotation-tools"
       aria-label="标注工具"
     >
-      <button
-        type="button"
-        className="at-heading"
-        aria-label="标注工具面板"
-        aria-expanded={!collapsed}
-        aria-controls={bodyId}
-        onClick={() => setCollapsed(value => !value)}
-      >
-        <span className="at-mark">
-          <Sparkles size={17} />
-        </span>
-        <span className="at-title">标注工具</span>
-        <span
-          className="at-current"
-          role="status"
-        >
-          {pending ? (
-            <>
-              <Loader2
-                size={13}
-                className="animate-spin"
-              />
-              准备中
-            </>
-          ) : activeTool ? (
-            labels[activeTool.id]
-          ) : (
-            browsing ? '浏览' : '选择工具'
-          )}
-        </span>
-        <ChevronDown
-          size={17}
-          className="at-chevron"
-        />
-      </button>
-      <div
-        id={bodyId}
-        hidden={collapsed}
-        className="at-body"
-      >
-        <div
-          className="at-tabs"
-          role="tablist"
-          aria-label="标注模式"
-        >
-          {enableAI && (
-            <button
+      {enableEditing &&
+        renderGroup(
+          [...manualTools.filter(t => t.id !== 'Eraser'), ...utilities.toolbarButtons],
+          'manual',
+          '手工标注工具'
+        )}
+      {enableEditing &&
+        manualTools.filter(t => t.id === 'Eraser').map(t => renderTool(t, 'manual'))}
+      {enableAI && renderGroup(aiTools, 'ai', 'AI 提示工具')}
+      {enableAI && ai.toolbarButtons.filter(t => t.id === 'nninter').map(t => renderTool(t, 'ai'))}
+      <Tooltip disableHoverableContent>
+        <TooltipTrigger asChild>
+          <span>
+            <Button
               type="button"
-              role="tab"
-              aria-selected={mode === 'ai'}
-              onClick={() => selectMode('ai')}
+              variant="ghost"
+              size="icon"
+              className="at-heading h-10 w-10"
+              aria-label="标注设置与提示管理"
+              aria-expanded={!collapsed}
+              aria-controls={bodyId}
+              onClick={() => setCollapsed(value => !value)}
             >
-              <Sparkles size={16} />
-              AI 提示
-            </button>
-          )}
-          {enableEditing && (
-            <button
-              type="button"
-              role="tab"
-              aria-selected={mode === 'manual'}
-              onClick={startManual}
-              disabled={pending}
-              title="开始编辑当前病灶；没有病灶时新建编辑目标"
+              {pending ? (
+                <Loader2
+                  size={23}
+                  className="animate-spin"
+                />
+              ) : (
+                <Settings2 size={23} />
+              )}
+            </Button>
+          </span>
+        </TooltipTrigger>
+        <TooltipContent side="bottom">标注设置与提示管理</TooltipContent>
+      </Tooltip>
+      {createPortal(
+        <section className="annotation-tools nt-overlay">
+          <div
+            id={bodyId}
+            hidden={collapsed}
+            className="at-body nt-popover"
+            role="region"
+            aria-label="顶部标注工具设置"
+          >
+            <div
+              className="at-tabs"
+              role="tablist"
+              aria-label="标注模式"
             >
-              <Paintbrush size={16} />
-              手工编辑
-            </button>
-          )}
-        </div>
-        <div
-          role="tabpanel"
-          aria-label={mode === 'ai' ? 'AI 提示工具' : '手工编辑工具'}
-        >
-          {mode === 'ai' && (
-            <div className="at-ai-controls">
-              <div
-                className="at-polarity"
-                aria-label="提示类型"
-              >
+              {enableAI && (
                 <button
                   type="button"
-                  aria-pressed={!negative}
-                  onClick={() => change(() => toolboxState.setPosNeg(false))}
-                  title="包含区域 · W"
+                  role="tab"
+                  aria-selected={mode === 'ai'}
+                  onClick={() => selectMode('ai')}
                 >
-                  <Plus size={14} />
-                  包含
+                  <Sparkles size={16} />
+                  AI 提示
                 </button>
+              )}
+              {enableEditing && (
                 <button
                   type="button"
-                  aria-pressed={negative}
-                  onClick={() => change(() => toolboxState.setPosNeg(true))}
-                  title="排除区域 · W"
+                  role="tab"
+                  aria-selected={mode === 'manual'}
+                  onClick={() => selectMode('manual')}
+                  disabled={pending}
+                  title="手工工具参数"
                 >
-                  <Minus size={14} />
-                  排除
+                  <Paintbrush size={16} />
+                  手工编辑
                 </button>
-              </div>
-              <button
-                type="button"
-                className="at-live"
-                aria-pressed={live}
-                title="自动推理 · Q"
-                onClick={() => change(() => toolboxState.setLiveMode(!live))}
-              >
-                <Zap size={14} />
-                自动
-              </button>
-              <button
-                type="button"
-                className="at-lock"
-                aria-label={locked ? '解锁 AI 工具' : '锁定 AI 工具'}
-                aria-pressed={locked}
-                onClick={() =>
-                  change(() => {
-                    sequence.current++;
-                    setPending(false);
-                    toolboxState.setLocked(!locked);
-                    if (!locked) {
-                      toolboxState.setLiveMode(false);
-                      browse();
+              )}
+            </div>
+            <div
+              role="tabpanel"
+              aria-label={mode === 'ai' ? 'AI 提示工具' : '手工编辑工具'}
+            >
+              {mode === 'ai' && (
+                <div className="at-ai-controls">
+                  <div
+                    className="at-polarity"
+                    aria-label="提示类型"
+                  >
+                    <button
+                      type="button"
+                      aria-pressed={!negative}
+                      onClick={() => change(() => toolboxState.setPosNeg(false))}
+                      title="包含区域 · W"
+                    >
+                      <Plus size={14} />
+                      包含
+                    </button>
+                    <button
+                      type="button"
+                      aria-pressed={negative}
+                      onClick={() => change(() => toolboxState.setPosNeg(true))}
+                      title="排除区域 · W"
+                    >
+                      <Minus size={14} />
+                      排除
+                    </button>
+                  </div>
+                  <button
+                    type="button"
+                    className="at-live"
+                    aria-pressed={live}
+                    title="自动推理 · Q"
+                    onClick={() => change(() => toolboxState.setLiveMode(!live))}
+                  >
+                    <Zap size={14} />
+                    自动
+                  </button>
+                  <button
+                    type="button"
+                    className="at-lock"
+                    aria-label={locked ? '解锁 AI 工具' : '锁定 AI 工具'}
+                    aria-pressed={locked}
+                    onClick={() =>
+                      change(() => {
+                        sequence.current++;
+                        setPending(false);
+                        toolboxState.setLocked(!locked);
+                        if (!locked) {
+                          toolboxState.setLiveMode(false);
+                          browse();
+                        }
+                      })
                     }
-                  })
-                }
-              >
-                {locked ? <Lock size={16} /> : <LockOpen size={16} />}
-              </button>
+                  >
+                    {locked ? <Lock size={16} /> : <LockOpen size={16} />}
+                  </button>
+                </div>
+              )}
+
+              {activeOptions && (
+                <div className="at-settings">
+                  <ToolSettings
+                    options={
+                      Array.isArray(activeOptions)
+                        ? activeOptions.map(option => ({
+                            ...option,
+                            name: settingLabels[option.name] || option.name,
+                            values: option.values?.map(item => ({
+                              ...item,
+                              label: settingLabels[item.label] || item.label,
+                            })),
+                          }))
+                        : activeOptions
+                    }
+                  />
+                </div>
+              )}
+
+              {mode === 'ai' && (
+                <section
+                  className="at-prompts"
+                  aria-label="当前 Entity AI 提示"
+                >
+                  <div className="at-prompt-heading">
+                    <strong>当前 Entity 提示 · {promptState.prompts.length}</strong>
+                    <button
+                      disabled={!promptState.prompts.length}
+                      aria-label={promptState.visible ? '隐藏 AI 提示' : '显示 AI 提示'}
+                      onClick={() => managePrompt('visibility')}
+                    >
+                      {promptState.visible ? '隐藏' : '显示'}
+                    </button>
+                  </div>
+                  <div className="at-prompt-history">
+                    <button
+                      disabled={locked || anatomyReadOnly || !promptState.undoCount}
+                      onClick={() => managePrompt('undo')}
+                    >
+                      撤销提示
+                    </button>
+                    <button
+                      disabled={locked || anatomyReadOnly || !promptState.redoCount}
+                      onClick={() => managePrompt('redo')}
+                    >
+                      重做提示
+                    </button>
+                    <button
+                      disabled={locked || anatomyReadOnly || !promptState.prompts.length}
+                      onClick={() => managePrompt('clear')}
+                    >
+                      清空当前 Entity 提示
+                    </button>
+                  </div>
+                  {promptState.busy && <p role="status">nnInteractive 正在推理…</p>}
+                  {!promptState.target && <p>请先点击 Entity 的编辑按钮。</p>}
+                  {promptState.prompts.map((prompt, index) => (
+                    <div
+                      key={prompt.uid}
+                      className="at-prompt-row"
+                      data-prompt-id={prompt.uid}
+                    >
+                      <button
+                        aria-label={`定位提示 ${index + 1}`}
+                        onClick={() => managePrompt('locate', prompt.uid)}
+                      >
+                        {index + 1}. {prompt.negative ? '排除' : '包含'} ·{' '}
+                        {labels[prompt.toolName] || '提示'}
+                        {prompt.index ? ` · 层 ${Math.round(prompt.index[2]) + 1}` : ''}
+                      </button>
+                      <small>
+                        {prompt.archived ? '已归入人工 mask' : prompt.applied ? '已应用' : '待推理'}
+                      </small>
+                      <button
+                        disabled={locked || anatomyReadOnly}
+                        aria-label={`删除提示 ${index + 1}`}
+                        onClick={() => managePrompt('delete', prompt.uid)}
+                      >
+                        删除
+                      </button>
+                    </div>
+                  ))}
+                  <small>
+                    隐藏只改变显示；删除和清空会重算本轮 AI 结果。人工编辑后的 mask 会作为新的基线。
+                  </small>
+                </section>
+              )}
+              <footer>
+                {mode === 'ai' ? (
+                  <>
+                    <span className="at-dot" />
+                    nnInteractive<span>当前选中目标</span>
+                  </>
+                ) : (
+                  <>
+                    <span className="at-dot" />
+                    直接编辑 mask<span>球形 / 插值需完整体数据</span>
+                  </>
+                )}
+              </footer>
             </div>
-          )}
-          <div className="at-tools">{tools.map(tool => renderTool(tool))}</div>
-          {activeOptions && (
-            <div className="at-settings">
-              <ToolSettings
-                options={
-                  Array.isArray(activeOptions)
-                    ? activeOptions.map(option => ({
-                        ...option,
-                        name: settingLabels[option.name] || option.name,
-                        values: option.values?.map(item => ({
-                          ...item,
-                          label: settingLabels[item.label] || item.label,
-                        })),
-                      }))
-                    : activeOptions
-                }
-              />
-            </div>
-          )}
-          <div className="at-actions">{actions.map(tool => renderTool(tool, true))}</div>
-          <footer>
-            {mode === 'ai' ? (
-              <>
-                <span className="at-dot" />
-                nnInteractive<span>当前选中目标</span>
-              </>
-            ) : (
-              <>
-                <span className="at-dot" />
-                直接编辑 mask<span>球形 / 插值需完整体数据</span>
-              </>
-            )}
-          </footer>
-        </div>
-      </div>
+          </div>
+        </section>,
+        document.body
+      )}
     </section>
   );
 }
