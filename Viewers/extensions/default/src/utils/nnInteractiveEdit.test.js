@@ -207,3 +207,27 @@ test('silent manual pixel changes retire the old replay base after a stale resul
   await h.editor.run(next);
   expect(h.infer.mock.calls[1][1]).toEqual(new Uint8Array([0, 0, 0, 1]));
 });
+
+
+test('failed inference exposes retry only for the unchanged target and clears on success', async () => {
+  const h = harness();
+  h.infer.mockRejectedValueOnce(new Error('GPU unavailable'));
+  await h.editor.run();
+  expect(h.editor.getError()).toBe('GPU unavailable');
+  expect(h.commit).not.toHaveBeenCalled();
+  await h.editor.run();
+  expect(h.editor.getError()).toBeUndefined();
+  expect(h.commit).toHaveBeenCalledTimes(1);
+});
+
+test('switching targets or editing pixels retires stale retry status', async () => {
+  const h = harness();
+  h.infer.mockRejectedValue(new Error('offline'));
+  await h.editor.run();
+  h.editor.changed('B');
+  expect(h.editor.getError()).toBeUndefined();
+  await h.editor.run();
+  expect(h.editor.getError()).toBe('offline');
+  h.setTarget({ ...h.target(), segmentationId: 'A' });
+  expect(h.editor.getError()).toBeUndefined();
+});

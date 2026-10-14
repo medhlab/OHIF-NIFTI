@@ -10,6 +10,8 @@ import {
 } from './annotationClient';
 import { editingMask, enterMaskEditing, exitMaskEditing } from './editing';
 import { maskLocation } from './maskLocation';
+import EntityName from './EntityName';
+import { entityMaskEmpty } from './entityMaskEmpty';
 import ReportFindings from './ReportFindings';
 import { getWorkspace } from './workspace';
 import './finding-entity-panel.css';
@@ -19,8 +21,8 @@ export default function FindingEntityPanel() {
   const [caseContext, setContext] = useState<any>(null),
     [categories, setCategories] = useState<any>({});
   const [error, setError] = useState(''),
-    [busy, setBusy] = useState(false),
-    [progress, setProgress] = useState<any>(null);
+    [busy, setBusy] = useState(false);
+  const [selectedEntityId, setSelectedEntityId] = useState('');
   const [reportText, setReportText] = useState(''),
     [findingText, setFindingText] = useState(''),
     [category, setCategory] = useState('');
@@ -56,14 +58,7 @@ export default function FindingEntityPanel() {
     if (sourceRef.current !== target) return;
     installAnnotationContext(target, response);
     setContext(response.data);
-    if (response.data.worklistId) {
-      const next = await annotationRequest(
-        `/worklists/${response.data.worklistId}/progress`,
-        undefined,
-        signal
-      );
-      if (sourceRef.current === target) setProgress(next);
-    }
+
   };
   const run = async action => {
     if (operation.current || source?.annotationStatus?.busy) return;
@@ -87,8 +82,8 @@ export default function FindingEntityPanel() {
   useEffect(() => {
     generation.current++;
     setContext(null);
-    setProgress(null);
     setActiveFinding('');
+    setSelectedEntityId('');
     setSelection('');
     setEvidence(null);
     setFindingText('');
@@ -123,12 +118,7 @@ export default function FindingEntityPanel() {
       const target = sourceRef.current;
       if (event.detail !== target?.sourceKey || !target?.annotationCase) return;
       setContext({ ...target.annotationCase });
-      if (target.annotationCase.worklistId)
-        annotationRequest(`/worklists/${target.annotationCase.worklistId}/progress`)
-          .then(p => {
-            if (sourceRef.current === target) setProgress(p);
-          })
-          .catch(() => {});
+
     };
     const selected = event => {
       if (event.detail?.sourceKey === sourceRef.current?.sourceKey)
@@ -261,13 +251,11 @@ export default function FindingEntityPanel() {
       });
       if (state) await editEntity(target, state.entities[state.entities.length - 1]);
     });
-  const completed = context && context.completedRevision === context.revision;
   return (
     <section
       className="annotation-panel"
       aria-label="Finding / Entity 标注工作台"
     >
-      <h2>Entity 标注</h2>
       {!context ? (
         <>
           <p role="status">
@@ -290,56 +278,6 @@ export default function FindingEntityPanel() {
         </>
       ) : (
         <>
-          <div className="annotation-status">
-            <strong>{completed ? '已完成' : '待完成'}</strong>
-            <span>{context.entities.length} 个 Entity</span>
-          </div>
-          {progress && (
-            <p role="status">
-              任务完成 {progress.completedCases}/{progress.totalCases} ·{' '}
-              {Math.round(progress.completionPercent || 0)}%
-            </p>
-          )}
-          <button
-            disabled={busy || completed || !context.sourceId || source?.annotationStatus?.busy}
-            onClick={() =>
-              run(async target => {
-                if (
-                  [...target.masks.values()].some(
-                    m => !m.anatomyReadOnly && isMaskDirty(servicesManager, m)
-                  )
-                )
-                  throw Error('请先保存当前编辑。');
-                await mutate(target, { operation: 'complete' });
-              })
-            }
-          >
-            标记完成
-          </button>
-          <details open={!context.reports.length}>
-            <summary>添加报告原文</summary>
-            <textarea
-              aria-label="报告原文"
-              value={reportText}
-              onChange={e => setReportText(e.target.value)}
-              placeholder="粘贴完整报告章节原文"
-            />
-            <button
-              disabled={busy || !reportText.trim()}
-              onClick={() =>
-                run(async target => {
-                  await mutate(target, {
-                    operation: 'report',
-                    name: '报告',
-                    sections: [{ name: 'Findings', text: reportText }],
-                  });
-                  setReportText('');
-                })
-              }
-            >
-              保存报告
-            </button>
-          </details>
           <ReportFindings
             key={context.caseId}
             context={context}
@@ -357,16 +295,7 @@ export default function FindingEntityPanel() {
             onEditEntity={entity => run(target => editEntity(target, entity))}
             onLocateEntity={entity => run(target => locateEntity(target, entity))}
             editingEntityId={editingEntityId}
-            onLink={(findingId, entityId, observationId?) =>
-              run(target =>
-                mutate(target, {
-                  operation: 'link',
-                  findingId,
-                  entityId,
-                  ...(observationId ? { observationIds: [observationId] } : {}),
-                })
-              )
-            }
+            isEntityEmpty={entity => entityMaskEmpty(source, entity)}
             onUnlink={linkId => run(target => mutate(target, { operation: 'unlink', linkId }))}
             onCategory={(findingId, value) =>
               run(target =>
@@ -453,13 +382,10 @@ export default function FindingEntityPanel() {
                 data-editing={editingEntityId === entity.id}
               >
                 <div className="rf-entity-header">
-                  <button
-                    className="rf-entity-edit"
-                    disabled={busy || source?.annotationStatus?.busy}
-                    onClick={() => run(target => locateEntity(target, entity))}
-                  >
-                    <span>{entity.name}</span>
-                  </button>
+                  <EntityName entity={entity} selected={selectedEntityId === entity.id || editingEntityId === entity.id}
+                    empty={entityMaskEmpty(source, entity)} busy={busy || source?.annotationStatus?.busy}
+                    onSelect={() => { setSelectedEntityId(entity.id); if (!entityMaskEmpty(source, entity)) run(target => locateEntity(target, entity)); }}
+                    onRename={name => run(target => mutate(target, { operation: 'entityMetadata', entityId: entity.id, name }))} />
                   <div
                     className="annotation-entity-actions"
                     role="group"
@@ -507,62 +433,6 @@ export default function FindingEntityPanel() {
                     </button>
                   </div>
                 </div>
-                <small>
-                  {entity.annotationDisposition === 'not_required'
-                    ? '不需空间标注'
-                    : entity.maskId
-                      ? '已保存（非空状态以完成校验为准）'
-                      : '待标注'}
-                </small>
-                <button
-                  disabled={busy || source?.annotationStatus?.busy}
-                  onClick={() =>
-                    run(async target => {
-                      const name = window.prompt('Entity 名称', entity.name);
-                      if (name?.trim())
-                        await mutate(target, {
-                          operation: 'entityMetadata',
-                          entityId: entity.id,
-                          name,
-                        });
-                    })
-                  }
-                >
-                  改名
-                </button>
-                <button
-                  disabled={busy || source?.annotationStatus?.busy}
-                  onClick={() =>
-                    run(async target => {
-                      const reason = window.prompt('不需要空间标注的原因');
-                      if (reason?.trim())
-                        await mutate(target, {
-                          operation: 'entityMetadata',
-                          entityId: entity.id,
-                          annotationDisposition: 'not_required',
-                          dispositionReason: reason,
-                        });
-                    })
-                  }
-                >
-                  不需标注
-                </button>
-                {entity.annotationDisposition === 'not_required' && (
-                  <button
-                    disabled={busy || source?.annotationStatus?.busy}
-                    onClick={() =>
-                      run(target =>
-                        mutate(target, {
-                          operation: 'entityMetadata',
-                          entityId: entity.id,
-                          annotationDisposition: 'needs_annotation',
-                        })
-                      )
-                    }
-                  >
-                    恢复待标注
-                  </button>
-                )}
               </div>
             ))}
           <button
@@ -575,6 +445,30 @@ export default function FindingEntityPanel() {
             点击 Entity 的铅笔按钮进入编辑；新增 Entity
             会自动进入。保存后继续编辑，退出编辑保留未保存修改。保存新版本后需重新标记完成。
           </p>
+          <details open={!context.reports.length}>
+            <summary>添加报告原文</summary>
+            <textarea
+              aria-label="报告原文"
+              value={reportText}
+              onChange={e => setReportText(e.target.value)}
+              placeholder="粘贴完整报告章节原文"
+            />
+            <button
+              disabled={busy || !reportText.trim()}
+              onClick={() =>
+                run(async target => {
+                  await mutate(target, {
+                    operation: 'report',
+                    name: '报告',
+                    sections: [{ name: 'Findings', text: reportText }],
+                  });
+                  setReportText('');
+                })
+              }
+            >
+              保存报告
+            </button>
+          </details>
         </>
       )}
       {busy && <p role="status">处理中…</p>}

@@ -347,3 +347,76 @@ Annotation 会话；状态：已完成（工程验收，应用待评审）。病
 应用全部改动已普通推送到 medhlab/OHIF-NIFTI 的 codex/annotation-v1，已核验远端包含70484cc和全部先前提交；本节同步更新发布说明。此前“未提交”“尚未推送”及GitHub DNS失败待同步描述保留为历史状态，不表示当前仍未发布。运行代码提交11b3172对应已验收的entity-labels-da38443d75部署；此次没有更改服务或数据。
 
 网络处理：临时SSH SOCKS读取远端成功，写连接中断；最终将rtx4500实时解析的GitHub地址用于单次Git连接参数，原域名TLS校验和本地认证保持。不修改系统DNS、全局Git配置或复制凭据。团队远端同步证据见 medhlab/cooperate_space 的任务记录。
+
+## 2026-10-14 标注工具分组与状态卡片验收
+
+技术状态：已完成，负责人Annotation会话。标注图标仍位于同一OHIF顶栏，新增16px左间距、独立底色与边框，保留原工具互斥及hover名称。右上角改为独立状态卡片：模式徽标、当前Entity/编号、mask与工具、关联类别和进度；保存（紫色主按钮）和退出编辑（独立次按钮）集中于卡片。移除顶栏及文件菜单重复保存入口，整页只保留一个“保存标注”。忙碌时两个按钮禁用，取消仍可用；保存继续编辑，退出回浏览并保留mask。
+
+完整OHIF构建和既有63项前端回归通过。公开CT工程Case 52eb0b26dd9844ab84819a3ceb5ab70b，验证初始无mask的保存/退出禁用、F2-E1进入编辑、手工绘制、卡片保存时无损压缩阶段与按钮禁用、成功后继续编辑、退出后浏览工具与编辑工具禁用、重开已保存mask后再次进入。未调用模型，未操作用户病例。浏览器无error。最终正常布局与228px宽卡片均通过；窄布局两个按钮自动上下排列，scrollWidth=clientWidth，没有横向溢出。工具组计算margin-left=16px、底色rgb(37,27,53)，保存底色rgb(116,80,163)。第一次视觉检查发现原全局样式覆盖主按钮底色，已增大局部选择器优先级修正并重新构建。
+
+隔离viewer当前status-card-ee304a8afd，快照ee304a8afd36ccf38a9cd39ef84f42a87309442bc7ba3bf4765a0024b5e73b30，基线a5d5e33。两后端及正式viewer身份/启动时间均未变。公共产物rtx4500 /home/ant/projects/OHIF-NIFTI/releases/status-card-20261014/：源码overlay/哈希、完整build.log、compose.preview.json/deployment.json、验收JSON和正常/窄侧栏截图。回退同项目entity-labels-20261014/compose.preview.json，仅 up -d --no-deps --no-build --pull never viewer，保留数据和模型。刷新页面取得新版前先保存有价值的修改。本次新增应用代码未提交，团队记录按既有授权同步。
+
+### 2026-10-14 紧凑卡片预览部署
+缩小内外边距、按钮高度，合并 Entity 标题并移除重复 mask 名。完整前端构建及既有测试通过；浏览状态卡片实测高 147px，无横向溢出。预览镜像 `ohif-nifti-rtx4500-viewer:compact-card-ec3d4f666f`；产物 rtx4500 `/home/ant/projects/OHIF-NIFTI/releases/compact-card-20261014/`。部署脚本确认两套 backend 与正式 viewer 未重启。回退使用上一版 `status-card-20261014/compose.preview.json` 仅更新 viewer。应用改动未提交。
+
+### 2026-10-14 工具栏模式分组完成
+预览镜像 `ohif-nifti-rtx4500-viewer:tool-modes-2bebd5fddf`，产物 rtx4500 `/home/ant/projects/OHIF-NIFTI/releases/tool-modes-20261014/`。完整构建与既有前端回归通过。工程 CT Entity 验证：进入编辑同步 AI 模式；切换手工直接激活画笔；手工菜单可选；切回 AI 激活点提示；选择框选后状态卡片显示框选，设置仅显示 AI 提示设置；无浏览器错误。未发起 GPU 推理。两套 backend 和正式 viewer 均未重启。回退可用 `compact-card-20261014/compose.preview.json` 仅更新 viewer。应用代码未提交。
+
+### 2026-10-14 应用提示与重试按钮完成
+预览镜像 `ohif-nifti-rtx4500-viewer:apply-prompts-da657be3ae`；产物 rtx4500 `/home/ant/projects/OHIF-NIFTI/releases/apply-prompts-20261014/`。完整构建与 65 项回归通过（含失败重试、成功清除错误及目标切换隔离）。真实 CT 工程页面确认自动推理时隐藏应用按钮、手动无提示时禁用、添加待推理点后启用；浏览器无错误，未运行 GPU 推理或保存新增提示。两套 backend 与正式 viewer 未重启。回退可用 `tool-modes-20261014/compose.preview.json` 仅更新 viewer。应用代码未提交。
+
+## 2026-10-14 界面与工具栏整理提交
+
+用户授权整理、提交、推送并同步团队记录。功能提交 `b8e7d9fda37ed5023cde2012e3882427fbd06a27`（codex/annotation-v1）涵盖紧凑标注状态卡片、保存/退出按钮归位、顶栏工具分组、互斥手工/AI模式、应用提示和目标隔离重试状态，以及手动更新提示后的待处理标记。8个源码与测试文件逐文件匹配已验收快照 `da657be3ae52694102b70608dc1fd95d4465685897f5df5e123fabe9ee527488`。
+
+完整OHIF构建及65项测试已通过；此前真实CT页面确认模式/工具同步、自动时隐藏应用按钮、手动无提示禁用及有待处理提示启用。当前核验隔离viewer运行 `ohif-nifti-rtx4500-viewer:apply-prompts-da657be3ae`。公共产物 rtx4500 `/home/ant/projects/OHIF-NIFTI/releases/apply-prompts-20261014/`。本次仅提交与推送，不重启服务或修改标注数据；无需重复运行模型。此前“未提交”段落为历史记录，当前代码已提交；远端发布以本次推送核验为准。
+
+### 2026-10-14 病例完成入口归位完成
+预览镜像 `ohif-nifti-rtx4500-viewer:case-status-29644545b6`；完整构建与既有65项回归通过。真实CT工程病例确认左侧当前病例卡片显示本例待完成和标记完成，右侧仅显示2个Entity，无病例状态或任务百分比。点击左侧标记完成，原校验正确返回“还有 Entity 尚未保存非空 mask”，病例保持待完成。整体百分比移至清单列表页。完成校验沿用既有API；已完成病例修改后自动恢复待完成，未新增显式重新打开API。两套backend及正式viewer未重启。回退用 `apply-prompts-20261014/compose.preview.json` 仅更新viewer。产物 rtx4500 `/home/ant/projects/OHIF-NIFTI/releases/case-status-20261014/`。本次应用增量未提交。
+
+### 2026-10-14 Entity 总数同行显示完成
+Entity 总数已移到“Entity 标注”标题旁小徽标，取消独立统计行。完整构建通过，真实CT页面确认标题同行显示2，病例完成入口仍在左侧。当前隔离viewer `ohif-nifti-rtx4500-viewer:entity-count-1a99546190`，产物 rtx4500 `/home/ant/projects/OHIF-NIFTI/releases/entity-count-20261014/`；两backend及正式viewer未重启。回退使用 `case-status-20261014/compose.preview.json` 仅更新viewer。应用增量未提交。
+
+### 2026-10-14 报告补录入口底部布局完成
+完整构建通过，真实CT页面确认“添加报告原文”位于 Finding / Entity 面板末尾，在未关联Entity、刷新及编辑说明之后。未提交报告或运行模型。补录仅保存原文，不自动拆分或生成Finding/Entity；模型提取结果独立导入。隔离viewer `ohif-nifti-rtx4500-viewer:report-entry-d9edee7fb3`；产物 rtx4500 `/home/ant/projects/OHIF-NIFTI/releases/report-entry-20261014/`。回退用 `entity-count-20261014/compose.preview.json` 仅更新viewer。两backend与正式viewer未重启；应用增量未提交。
+
+### 2026-10-14 同级标题统一完成
+报告原文与 Findings 共用 SectionHeading，图标、箭头、字体及计数一致。完整构建通过；真实CT页面确认 Findings 折叠后隐藏搜索和列表，左侧定位 F1 后自动展开。隔离viewer `ohif-nifti-rtx4500-viewer:section-headings-ea5ddbe8f7`；产物 rtx4500 `/home/ant/projects/OHIF-NIFTI/releases/section-headings-20261014/`。回退用 `report-entry-20261014/compose.preview.json` 仅更新viewer。两backend及正式viewer未重启；应用增量未提交。
+
+### 2026-10-14 标题去重完成
+完整构建通过，真实CT页面核验 Entity 标注大标题数量为0，报告分区标题文字仅“报告原文”，Findings 计数及折叠保留。隔离viewer `ohif-nifti-rtx4500-viewer:clean-headings-6f8f6f9f9d`；产物 rtx4500 `/home/ant/projects/OHIF-NIFTI/releases/clean-headings-20261014/`。回退用 `section-headings-20261014/compose.preview.json` 仅更新viewer。两backend及正式viewer未重启；应用增量未提交。
+
+### 2026-10-14 Finding/Entity 行内操作合并验收完成
+最终快照 `059486f69ad8e0c5be3c84333661c83f34a6155411e8346a7aba6443131b3284`，隔离viewer `ohif-nifti-rtx4500-viewer:entity-inline-059486f69a`；产物 rtx4500 `/home/ant/projects/OHIF-NIFTI/releases/entity-inline-20261014/`。完整构建及67项测试通过（新增未保存绘制/擦空/未加载mask空状态测试）。初次新测试因Cornerstone模块mock解析失败，改为virtual mock后通过。
+真实CT工程Case确认F1/F2初始折叠，F1标题仅一个新增Entity加号，F1类别直接选择2c成功后恢复2d；Entity首击选中、再击名称出现行内输入，Esc取消正常；空Entity名称旁显示暂无标注虚线圆，待绘制独立行和Entity信息/无需标注入口均移除。模型报告结果整段移除。浏览器无error。未进行GPU推理或改动用户病例。
+行内改名取代原生prompt，回车保存、Esc或失焦取消。保留既有服务端字段兼容，不迁移数据。回退使用 `clean-headings-20261014/compose.preview.json` 仅更新viewer；两backend及正式viewer未重启。应用增量未提交。
+
+### 2026-10-14 报告提示单行与移除共享选择
+按用户要求将报告提示标签与内容置于同一行，nowrap且横向溢出可滚动；移除Finding和报告提示详情内选择已有/共享Entity的入口及回调，不修改现有关联数据。完整构建通过。真实100报告清单中train_10382_a_1的F1提示实测高27px、nowrap、overflow-x auto；关联已有Entity下拉数量0。仅查看真实病例，未改其标注。
+隔离viewer `ohif-nifti-rtx4500-viewer:report-hints-eb48249c83`；快照 eb48249c839f0c553655949a9dd337e2cf7235692f8c1352f51cce08ba2032cc；产物 rtx4500 `/home/ant/projects/OHIF-NIFTI/releases/report-hints-20261014/`。两backend及正式viewer未重启，回退用 `entity-inline-20261014/compose.preview.json` 仅更新viewer。应用增量未提交。
+
+### 2026-10-14 状态按钮右置与 Findings 单一计数完成
+保存标注、退出编辑位于状态信息右侧，使用两列布局且不再增加独立按钮行。Findings 标题仅显示 context.findings.length，去掉 Entity 数量。完整 OHIF 构建通过；真实100报告清单 train_10382_a_1 标题显示7，DOM中实际7条Finding，无Entity总数提示。状态卡片浏览模式实测高100px，按钮与状态信息左右排列。未改病例标注数据。
+最终隔离viewer `ohif-nifti-rtx4500-viewer:finding-count-0de58eecc3`，快照 `0de58eecc32a09c92e591e2597d8ce70547bb91d74fca0915ae8b46f63a8504a`；产物 rtx4500 `/home/ant/projects/OHIF-NIFTI/releases/finding-count-20261014/`。状态栏中间版本在 `status-inline-20261014/`，已由最终版覆盖。两backend及正式viewer未重启；回退本轮用 `report-hints-20261014/compose.preview.json` 仅更新viewer。应用增量未提交。
+
+### 2026-10-14 状态卡片图标操作验收完成
+模式徽标贴齐卡片右上角；保存标注、退出编辑改为30px纯图标按钮，复用顶部工具栏 Tooltip 及 aria-label，移除按钮文字/数量。完整OHIF构建通过。真实CT报告页确认徽标距右边11px、顶边9px；两个按钮可见文本均为空，名称标签保留，卡片高100px。无病例数据写入。
+隔离viewer `ohif-nifti-rtx4500-viewer:status-icons-c3ab173952`，快照 `c3ab173952c0c989c526c10e5b18ac29386d2c798d14206aa6fe5620823a36dc`；产物 rtx4500 `/home/ant/projects/OHIF-NIFTI/releases/status-icons-20261014/`。两backend与正式viewer未重启；回退 `finding-count-20261014/compose.preview.json` 仅更新viewer。应用增量未提交。
+
+### 2026-10-14 鼠标工具单一高亮验收完成
+移除手工编辑/AI提示工具组入口的 aria-pressed 与常亮样式，保留实际ToolButton激活高亮；移除同组选择提前返回，浏览后再次点击当前工具组可启用默认工具。完整OHIF构建通过。真实CT工程Case验证画笔→浏览→同组画笔→AI点提示→浏览，高亮随实际鼠标工具切换，最终可见顶部pressed按钮仅浏览。未绘制或保存mask。
+隔离viewer `ohif-nifti-rtx4500-viewer:active-tool-de19ee1b3a`，快照 `de19ee1b3a65d0397dc0f20395ed21bb6d2bd24872dda47da42815e47aa9ba47`；产物 rtx4500 `/home/ant/projects/OHIF-NIFTI/releases/active-tool-20261014/`。两backend及正式viewer未重启；回退 `status-icons-20261014/compose.preview.json` 仅更新viewer。应用增量未提交。
+
+### 2026-10-14 流水线原文排序与干净重导入完成
+修复实际流水线快照：在graph/context生成后，按Findings→Impressions、证据start、end稳定排序mentions与lesions，相同跨度保留原顺序。processingVersion=`report-qc/2026-10-14-source-order`；代码SHA256 `ced019eb30f4957258f789a597c7b45d797ba455cc87931a367472a47f3f5569`。旧模型原始输出及冻结产物不改写。新公共运行根 chocola `/data/cache/ohif-pipeline/runs/report-source-order-20261014/`，包含pipeline源码、补丁、离线重放脚本、pilot-100/cases、source.json、replay-receipt.json及完整结果包report-source-order-results.tar.gz；后续应从此修复版本继续运行。
+100份报告/184体积使用原始模型缓存重放，0模型请求。逐例验证忽略列表顺序、processingVersion和新增orderingPolicy后所有内容完全相等；919 accepted、44 rejected、641文本Finding候选、202跨章节候选及169暂存Impression数不变。4份报告对应8体积的Finding顺序改变。所有184体积的mentions与lesions满足排序。
+按用户“标注都是测试，无需保留”要求新建干净任务，未迁入旧Entity/mask关联。新manifest `9ce3d83a1ab345fdb85e044ca1cad420`，runId=`report-source-order-20261014`。184病例API核验全部原文排序、精确证据一致、Entity/links为空且未完成；真实CT train_10382_a_1页面验证原F6成为F1，左右列表一致。旧manifest `576a3ff5bcbe40b9b9dc354942129f63` 仍为旧测试任务，不作为新入口；未删除底层旧文件。
+rtx4500回执/截图 `/home/ant/projects/OHIF-NIFTI/releases/report-source-order-20261014/`。没有重启前后端或模型服务。应用仓库保存deploy/nifti/report-source-order.patch、replay-source-order.py及使用说明，增量尚未提交；团队同步以记录commit为准。此前人工质量问题不因排序修复而消失。
+
+## 2026-10-14 Finding/Entity界面与流水线整理发布
+
+用户授权整理全部改动、推送并创建PR。界面功能提交 `10eabe4`，流水线排序修复及离线重放工具提交 `c959808`。包含病例完成状态归位、任务列表进度、统一可折叠标题与Finding默认收起、行内类别/Entity改名、空mask提示、单行报告提示、移除共享选择及冗余内容、紧凑图标状态卡片和鼠标工具唯一高亮。此前工具栏/应用提示提交 `b8e7d9f` 同属本次相对main增量。
+
+18个运行源码与测试文件逐文件匹配已部署 `active-tool-de19ee1b3a` 快照 `de19ee1b3a65d0397dc0f20395ed21bb6d2bd24872dda47da42815e47aa9ba47`。沿用完整OHIF构建、67项前端测试与真实CT界面验收。报告缓存重放100份/184体积，逐例内容/ID/关系不变、0模型调用；全量新导入API核验原文顺序与干净Entity/links。当前manifest `9ce3d83a1ab345fdb85e044ca1cad420`，流水线公共版本见deploy/nifti/report-source-order.md。
+
+本次仅Git整理发布，不重启服务或改变已导入数据。此前未提交描述均为历史状态，发布证据以远端提交和PR为准。在线LLM调度、自动图像定位、真实TotalSegmentator结果及人工语义质量验收仍不在本次完成范围。后端历史annotationDisposition兼容仍保留，本次移除其UI入口。

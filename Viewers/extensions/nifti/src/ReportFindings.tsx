@@ -1,4 +1,5 @@
-import { entityLabel, entityLabels } from './entityLabels.mjs';
+import EntityName from './EntityName';
+import { entityLabel } from './entityLabels.mjs';
 import React, { useEffect, useRef, useState } from 'react';
 import {
   ChevronDown,
@@ -7,6 +8,7 @@ import {
   Crosshair,
   Plus,
   FileText,
+  List,
   Unlink,
   Trash2,
   Pencil,
@@ -19,6 +21,16 @@ import {
   warningText,
 } from './reportPresentation';
 
+function SectionHeading({ icon: Icon, title, count, open, onToggle, controls }) {
+  return <div className="rf-section-heading">
+    <Icon size={17} aria-hidden="true" />
+    <button type="button" aria-expanded={open} aria-controls={controls} onClick={onToggle}>
+      {open ? <ChevronDown size={14} /> : <ChevronRight size={14} />}{title}
+    </button>
+    {count != null && <span className="rf-count">{count}</span>}
+  </div>;
+}
+
 export default function ReportFindings({
   context,
   categories,
@@ -30,8 +42,8 @@ export default function ReportFindings({
   onEditEntity,
   onLocateEntity,
   editingEntityId,
+  isEntityEmpty,
   onDeleteEntity,
-  onLink,
   onUnlink,
   onCategory,
   onEntityMetadata,
@@ -39,12 +51,15 @@ export default function ReportFindings({
 }) {
   const [focusedId, setFocusedId] = useState(''),
     [selectedObservation, setSelectedObservation] = useState('');
+  const [findingsOpen, setFindingsOpen] = useState(true);
   const [reportOpen, setReportOpen] = useState(true),
     [createOpen, setCreateOpen] = useState(false);
-  const [collapsed, setCollapsed] = useState<Set<string>>(new Set()),
+  const [collapsed, setCollapsed] = useState<Set<string>>(
+    () => new Set(context.findings.map(f => f.id))
+  ),
     [search, setSearch] = useState('');
-  const [sharedEntity, setSharedEntity] = useState(''),
-    [notice, setNotice] = useState('');
+  const [selectedEntityId, setSelectedEntityId] = useState('');
+  const [notice, setNotice] = useState('');
   const root = useRef<HTMLElement>(null);
   const scrollWithin = (container, node) => {
     if (!container || !node) return;
@@ -71,7 +86,6 @@ export default function ReportFindings({
   };
   const selectObservation = observation => {
     setSelectedObservation(observation.id === selectedObservation ? '' : observation.id);
-    setSharedEntity('');
     if (observation.findingId)
       setCollapsed(previous => {
         const n = new Set(previous);
@@ -81,9 +95,9 @@ export default function ReportFindings({
     if (observation.evidenceIds[0]) focus(observation.evidenceIds[0], observation.findingId);
   };
   const selectFinding = finding => {
+    setFindingsOpen(true);
     onSelectFinding(finding.id);
     setSelectedObservation('');
-    setSharedEntity('');
     setCollapsed(previous => {
       const n = new Set(previous);
       n.delete(finding.id);
@@ -100,6 +114,7 @@ export default function ReportFindings({
   useEffect(() => {
     const finding = context.findings.find(f => f.id === activeFinding);
     if (!finding) return;
+    setFindingsOpen(true);
     setCollapsed(previous => {
       const n = new Set(previous);
       n.delete(finding.id);
@@ -152,8 +167,6 @@ export default function ReportFindings({
     selected &&
     (context.findings.find(f => f.id === selected.findingId) ||
       context.findings.find(f => f.id === activeFinding));
-  const entityLinks = entity => context.links.filter(l => l.entityId === entity.id);
-  const entityNumber = entity => entityLabels(context, entity.id);
   const renderEntity = (entity, link) => (
     <div
       className="rf-entity"
@@ -162,14 +175,11 @@ export default function ReportFindings({
       data-editing={editingEntityId === entity.id}
     >
       <div className="rf-entity-header">
-        <button
-          className="rf-entity-edit"
-          disabled={busy}
-          onClick={() => onLocateEntity(entity)}
-        >
-          <strong>{entityLabel(context, entity.id, link.findingId)}</strong>
-          <span>{entity.name}</span>
-        </button>
+        <EntityName entity={entity} prefix={entityLabel(context, entity.id, link.findingId)}
+          selected={selectedEntityId === entity.id || editingEntityId === entity.id}
+          empty={isEntityEmpty(entity)} busy={busy}
+          onSelect={() => { setSelectedEntityId(entity.id); if (!isEntityEmpty(entity)) onLocateEntity(entity); }}
+          onRename={name => onEntityMetadata(entity.id, { name })} />
         <div
           className="annotation-entity-actions"
           role="group"
@@ -228,59 +238,10 @@ export default function ReportFindings({
           </button>
         </div>
       </div>
-      <small>
-        {entity.annotationDisposition === 'not_required'
-          ? '不需标注'
-          : entity.maskId
-            ? '已保存'
-            : '待绘制'}
-        {entityLinks(entity).length > 1 ? ` · 共享 ${entityLinks(entity).length} 个 Finding` : ''}
-      </small>
       {(entity.reportObservations || []).length > 0 && (
         <small>报告关联：{entity.reportObservations.map(o => o.term).join(' · ')}</small>
       )}
-      <details className="rf-metadata">
-        <summary>Entity 信息</summary>
-        <button
-          className="rf-quiet"
-          disabled={busy}
-          onClick={() => {
-            const name = window.prompt('Entity 名称', entity.name);
-            if (name?.trim()) onEntityMetadata(entity.id, { name });
-          }}
-        >
-          改名
-        </button>
-        {entity.annotationDisposition === 'not_required' ? (
-          <>
-            <small>{entity.dispositionReason}</small>
-            <button
-              className="rf-quiet"
-              disabled={busy}
-              onClick={() =>
-                onEntityMetadata(entity.id, { annotationDisposition: 'needs_annotation' })
-              }
-            >
-              恢复待标注
-            </button>
-          </>
-        ) : (
-          <button
-            className="rf-quiet"
-            disabled={busy}
-            onClick={() => {
-              const reason = window.prompt('不需要空间标注的原因');
-              if (reason?.trim())
-                onEntityMetadata(entity.id, {
-                  annotationDisposition: 'not_required',
-                  dispositionReason: reason,
-                });
-            }}
-          >
-            不需标注
-          </button>
-        )}
-      </details>
+
     </div>
   );
   const renderObservation = observation => (
@@ -364,40 +325,8 @@ export default function ReportFindings({
             ))}
           </div>
         )}
-        {selectedFinding && selected.assertion !== 'negated' && (
-          <div className="rf-actions">
-            <button
-              disabled={busy}
-              onClick={() => onAddEntity(selectedFinding.id, selected.id)}
-            >
-              <Plus size={14} />
-              新建 Entity 并绘制
-            </button>
-            <select
-              aria-label="报告提示关联已有 Entity"
-              value={sharedEntity}
-              onChange={e => setSharedEntity(e.target.value)}
-            >
-              <option value="">关联已有 Entity…</option>
-              {context.entities.map(e => (
-                <option
-                  key={e.id}
-                  value={e.id}
-                >
-                  {entityNumber(e)} · {e.name}
-                </option>
-              ))}
-            </select>
-            <button
-              disabled={busy || !sharedEntity}
-              onClick={() => onLink(selectedFinding.id, sharedEntity, selected.id)}
-            >
-              关联报告提示
-            </button>
-          </div>
-        )}
         {!selectedFinding && (
-          <small>选择已有 Finding 后可关联此提示；也可从原文选区补充 Finding。</small>
+          <small>可从原文选区补充 Finding。</small>
         )}
       </div>
     );
@@ -414,18 +343,12 @@ export default function ReportFindings({
       aria-label="报告与 Finding"
       data-case-id={context.caseId}
     >
-      <div className="rf-section-heading">
-        <FileText size={17} />
-        <button
-          aria-expanded={reportOpen}
-          onClick={() => setReportOpen(!reportOpen)}
-        >
-          {reportOpen ? <ChevronDown size={14} /> : <ChevronRight size={14} />}报告原文
-        </button>
-        <small>{context.reports.length} 来源</small>
-      </div>
+      <SectionHeading icon={FileText} title="报告原文"
+        open={reportOpen} onToggle={() => setReportOpen(!reportOpen)}
+        controls={`report-source-${context.caseId}`} />
       {reportOpen && (
         <div
+          id={`report-source-${context.caseId}`}
           className="rf-source-scroll"
           data-testid="source-report-scroll"
         >
@@ -496,21 +419,10 @@ export default function ReportFindings({
         <summary>补充 Finding</summary>
         {createForm}
       </details>
-      {extraction && (
-        <div className="rf-provenance">
-          <strong>{extraction.producer} · 模型报告结果</strong>
-          <small>
-            {extraction.counts.acceptedMentions} 条观察 · {extraction.counts.proposedLesions} 个
-            Finding 候选 · {extraction.counts.rejectedMentions} 条拒绝项
-          </small>
-          <small>文本候选尚未图像验证；Entity 由人工创建和关联。</small>
-        </div>
-      )}
-      <div className="rf-section-heading">
-        <strong>Findings</strong>
-        <span className="rf-count">{context.findings.length}</span>
-        <small>{context.entities.length} 个 Entity</small>
-      </div>
+      <SectionHeading icon={List} title="Findings" count={context.findings.length}
+        open={findingsOpen}
+        onToggle={() => setFindingsOpen(!findingsOpen)} controls={`findings-list-${context.caseId}`} />
+      <div id={`findings-list-${context.caseId}`} hidden={!findingsOpen}>
       <input
         className="rf-search"
         aria-label="搜索 Finding"
@@ -549,13 +461,33 @@ export default function ReportFindings({
                   onClick={() => selectFinding(finding)}
                 >
                   <strong>F{number}</strong>
-                  <span>
-                    {finding.category
-                      ? `${finding.category} · ${categories[finding.category] || ''}`
-                      : '未分类'}
-                  </span>
                 </button>
+                <select
+                  className="rf-category-select"
+                  aria-label={`Finding ${number} 类别`}
+                  title="修改 Finding 类别"
+                  disabled={busy}
+                  value={finding.category || ''}
+                  onChange={e => onCategory(finding.id, e.target.value || null)}
+                >
+                  <option value="">未分类</option>
+                  {Object.entries(categories).map(([code, name]) => (
+                    <option key={code} value={code}>{code} · {String(name)}</option>
+                  ))}
+                </select>
                 <small>E · {links.length}</small>
+                <button
+                  className="rf-icon"
+                  aria-label={`F${number} 新增 Entity 并绘制`}
+                  title="新增 Entity 并绘制"
+                  disabled={busy}
+                  onClick={() => {
+                    selectFinding(finding);
+                    onAddEntity(finding.id, selected?.findingId === finding.id && selected.assertion !== 'negated' ? selected.id : undefined);
+                  }}
+                >
+                  <Plus size={15} />
+                </button>
                 <button
                   className="rf-icon"
                   aria-label={`复制 F${number} 描述`}
@@ -591,59 +523,8 @@ export default function ReportFindings({
                     return entity && renderEntity(entity, link);
                   })}
                   {!links.length && <p className="rf-caption">尚无 Entity mask</p>}
-                  <div className="rf-actions">
-                    <button
-                      disabled={busy}
-                      onClick={() => onAddEntity(finding.id)}
-                    >
-                      <Plus size={13} />
-                      新增 Entity 并绘制
-                    </button>
-                  </div>
-                  {activeFinding === finding.id && (
-                    <div className="rf-actions">
-                      <select
-                        aria-label={`F${number} 关联已有 Entity`}
-                        value={sharedEntity}
-                        onChange={e => setSharedEntity(e.target.value)}
-                      >
-                        <option value="">选择共享 Entity…</option>
-                        {context.entities.map(e => (
-                          <option
-                            key={e.id}
-                            value={e.id}
-                          >
-                            {entityNumber(e)} · {e.name}
-                          </option>
-                        ))}
-                      </select>
-                      <button
-                        disabled={busy || !sharedEntity}
-                        onClick={() => onLink(finding.id, sharedEntity)}
-                      >
-                        关联
-                      </button>
-                    </div>
-                  )}
-                  <details className="rf-metadata">
-                    <summary>修改 Finding 类别</summary>
-                    <select
-                      aria-label={`Finding ${number} 类别`}
-                      disabled={busy}
-                      value={finding.category || ''}
-                      onChange={e => onCategory(finding.id, e.target.value || null)}
-                    >
-                      <option value="">未分类</option>
-                      {Object.entries(categories).map(([code, name]) => (
-                        <option
-                          key={code}
-                          value={code}
-                        >
-                          {code} · {String(name)}
-                        </option>
-                      ))}
-                    </select>
-                  </details>
+
+
                 </div>
               )}
             </article>
@@ -657,6 +538,7 @@ export default function ReportFindings({
         {context.findings.length > 0 && !filtered.length && (
           <p className="rf-empty">没有匹配的 Finding。</p>
         )}
+      </div>
       </div>
       {extraObservations.length > 0 && (
         <details className="rf-extra">

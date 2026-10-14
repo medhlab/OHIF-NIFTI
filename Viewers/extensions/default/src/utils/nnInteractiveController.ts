@@ -490,7 +490,7 @@ export function createNnInteractiveController({
         measurementService.toggleVisibilityMeasurement(uid, show);
     }
   }
-  function replayCurrent(ticket) {
+  function replayCurrent(ticket, run = true) {
     const next = editor.replacePrompts();
     if (!next) return Promise.resolve();
     for (const owner of owners.values())
@@ -500,7 +500,7 @@ export function createNnInteractiveController({
         owner.applied = false;
       }
     syncVisibility(next);
-    return editor.run(next);
+    return run ? editor.run(next) : Promise.resolve();
   }
   function managePrompts({ action, uid }: { action: string; uid?: string }) {
     const ticket = managedCapture();
@@ -558,6 +558,7 @@ export function createNnInteractiveController({
       prompts,
       visible: visible.get(key) !== false,
       busy: editor.isRunning(),
+      error: editor.getError(),
       undoCount: history?.undo.length || 0,
       redoCount: history?.redo.length || 0,
       target: ticket?.target.segmentationId,
@@ -628,6 +629,8 @@ export function createNnInteractiveController({
         if (signature === owner.signature) return; // Visibility-only updates are not new prompts.
         const initialCompletion = JSON.parse(owner.signature || '[]')[1] == null;
         owner.signature = signature;
+        owner.applied = false;
+        if (!toolboxState.getLiveMode() && !initialCompletion) void replayCurrent(owner.ticket, false);
         if (toolboxState.getLiveMode())
           setTimeout(() => {
             const current = managedCapture();

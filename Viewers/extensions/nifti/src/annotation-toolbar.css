@@ -33,7 +33,7 @@
   margin-top: 12px;
 }
 
-/* Annotation icons occupy the same OHIF header row and use its Button/ToolButton. */
+/* Annotation remains on the OHIF icon row, grouped apart from image tools. */
 .nt-toolbar {
   display: flex;
   align-items: center;
@@ -41,6 +41,11 @@
   flex-wrap: nowrap;
   flex-shrink: 0;
   color: var(--wb-text);
+  margin-left: 16px;
+  padding: 3px 7px;
+  background: #251b35;
+  border: 1px solid #49365e;
+  border-radius: 11px;
 }
 .nt-toolbar [hidden] {
   display: none !important;
@@ -142,46 +147,157 @@
   padding: 6px;
 }
 #nifti-annotation-context {
-  padding: 9px 14px 6px;
+  padding: 6px 8px;
   background: var(--wb-panel);
 }
-.nt-target {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
+.nt-context-card {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  column-gap: 10px;
+  padding: 8px 10px;
+  border: 1px solid #453652;
+  border-radius: 8px;
+  background: linear-gradient(135deg, #20192b, #15171f);
   color: var(--wb-text);
   font:
-    13px/1.4 Inter,
+    13px/1.45 Inter,
     'Microsoft YaHei',
     sans-serif;
+}
+.nt-card-heading {
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 5px;
+}
+.nt-card-heading h2 {
+  font-size: 13px;
+  font-weight: 600;
+  color: #b8abc9;
+  margin: 0;
+}
+.nt-mode-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  padding: 2px 6px;
+  border: 1px solid #4b4258;
+  border-radius: 20px;
+  color: #bbb0cc;
+  font-size: 11px;
+  white-space: nowrap;
+  background: #2a2334;
+}
+.nt-context-card[data-state='editing'] .nt-mode-badge {
+  color: #9de4cf;
+  border-color: #31584f;
+  background: #17382e;
+}
+.nt-target {
+  grid-column: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
   min-width: 0;
 }
 .nt-target strong {
-  color: #e4d2ff;
-  font-size: 14px;
+  font-size: 13px;
+  color: #eee5ff;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 .nt-target span {
-  color: #80d9c7;
   font-size: 12px;
+  color: #b7abc7;
   overflow-wrap: anywhere;
 }
-.nt-status {
+.nt-target .nt-field-label {
+  font-size: 10px;
+  color: #93879f;
+}
+.nt-target [aria-label='当前 Entity 关联类别'] {
+  color: #89cfbc;
+}
+.nt-card-footer {
+  display: contents;
+}
+.nt-card-actions {
   display: flex;
+  grid-column: 2;
+  grid-row: 2 / span 2;
+  align-self: center;
+  gap: 6px;
+}
+.nt-card-actions button {
+  display: inline-flex;
+  flex: 0 0 auto;
+  white-space: nowrap;
+  justify-content: center;
   align-items: center;
   gap: 5px;
-  color: #b9a9cc;
+  width: 30px;
+  height: 30px;
+  min-height: 30px;
+  padding: 5px;
   font-size: 12px;
+  font-weight: 600;
+  border-radius: 7px;
+}
+.nt-card-actions .nt-save-action button {
+  background: #7450a3;
+  border: 1px solid #9570c2;
+  color: #fff;
+}
+.nt-card-actions .nt-save-action button:hover:not(:disabled) {
+  background: #8961b8;
+}
+.nt-card-actions .nt-exit-action button {
+  background: #282331;
+  border: 1px solid #665476;
+  color: #dbcee9;
+}
+.nt-card-actions .nt-exit-action button:hover:not(:disabled) {
+  background: #3b3048;
+}
+.nt-card-actions button:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+.nt-card-actions button:focus-visible {
+  outline: 2px solid #c5a1f3;
+  outline-offset: 2px;
+}
+.nt-status {
+  grid-column: 1;
+  display: flex;
+  flex: 1;
+  min-width: 0;
+  align-items: center;
+  gap: 6px;
+  min-height: 16px;
+  color: #b5a8c4;
+  font-size: 11px;
   overflow-wrap: anywhere;
+}
+.nt-status > svg {
+  flex-shrink: 0;
 }
 .nt-status [role='alert'] {
   color: #ffb7b7;
 }
+.nt-context-card[data-state='error'] {
+  border-color: #815356;
+}
+.nt-status > .nt-icon-wrap {
+  margin-left: auto;
+  flex-shrink: 0;
+}
 .nt-status > .nt-icon-wrap button {
-  height: 24px;
-  width: 24px;
+  height: 26px;
+  width: 26px;
 }
 body.nifti-case-switching .nt-toolbar {
   pointer-events: none;
@@ -201,26 +317,4 @@ body.nifti-case-switching .nt-toolbar {
 body.nifti-case-switching .nt-popover {
   pointer-events: none;
   opacity: 0.6;
-}
-
-.nt-editing-heading {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-  margin-bottom: 4px;
-}
-.nt-editing-heading b {
-  font-size: 12px;
-  color: #aab0c4;
-}
-.nt-target[data-editing='true'] .nt-editing-heading b {
-  color: #80d9c7;
-}
-.nt-editing-heading button {
-  border: 1px solid #806da5;
-  border-radius: 4px;
-  padding: 3px 8px;
-  color: #e4d2ff;
-  font-size: 12px;
 }

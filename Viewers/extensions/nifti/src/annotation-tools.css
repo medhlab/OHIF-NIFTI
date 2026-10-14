@@ -181,3 +181,6 @@
   flex-wrap: wrap;
   margin: 7px 0;
 }
+
+.at-mode-switch { display: flex; gap: 2px; padding-right: 6px; margin-right: 4px; border-right: 1px solid #665476; }
+.at-mode-title { display: block; margin-bottom: 12px; color: #d6c6e7; font-size: 13px; }
