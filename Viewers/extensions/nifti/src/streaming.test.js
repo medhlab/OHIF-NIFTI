@@ -1,3 +1,5 @@
+import { beginImageCache, takePrefetchedFrame, storeImageFrame, discardCachedFrame } from './frameDiskCache';
+jest.mock('./frameDiskCache', () => ({beginImageCache: jest.fn(), takePrefetchedFrame: jest.fn(), storeImageFrame: jest.fn(), discardCachedFrame: jest.fn()}));
 import { createStream, ensureSlice, ensureComplete, prepareStreaming, startBackground, navigateSlice, pauseComplete, requestComplete } from './streaming';
 import { request } from './api';
 import { createFrameDecoder } from './workerClient';
@@ -21,7 +23,7 @@ function response(index = 0) {
 if (!AbortSignal.prototype.throwIfAborted) AbortSignal.prototype.throwIfAborted = function () {
   if (this.aborted) throw this.reason || new DOMException('Cancelled', 'AbortError');
 };
-beforeEach(() => { jest.resetAllMocks(); createFrameDecoder.mockReturnValue({ decode: jest.fn().mockResolvedValue(new Int16Array([42])), dispose: jest.fn() }); });
+beforeEach(() => { jest.resetAllMocks(); beginImageCache.mockResolvedValue(0); storeImageFrame.mockResolvedValue(true); createFrameDecoder.mockReturnValue({ decode: jest.fn().mockResolvedValue(new Int16Array([42])), dispose: jest.fn() }); });
 
 test('transient HTTP failure retries the same frame and restores its working pixels', async () => {
   const s = source(1);
@@ -143,4 +145,25 @@ test('navigation supersedes the opening center while preserving the whole-volume
   expect(s.stream.loaded.every(Boolean)).toBe(true);
   expect(s.scalarData[15]).toBe(73);
   s.stream.dispose();
+});
+
+
+test('disk hit decodes without network and corrupt payload falls back to network', async () => {
+  const s = source(2);
+  takePrefetchedFrame.mockResolvedValueOnce(response(0));
+  await ensureSlice(s, 0); expect(request).not.toHaveBeenCalled();
+  expect(s.stream.diskHits).toBe(1); expect(s.scalarData[0]).toBe(42);
+  takePrefetchedFrame.mockResolvedValueOnce(response(1));
+  s.stream.decoder.decode.mockRejectedValueOnce(Error('SHA mismatch'));
+  request.mockResolvedValue(response(1));
+  await ensureSlice(s, 1);
+  expect(discardCachedFrame).toHaveBeenCalledWith('source',s.stream.descriptor,1);
+  expect(request).toHaveBeenCalledTimes(1); expect(s.scalarData[1]).toBe(42);
+  s.stream.dispose();
+});
+test('network frame is cached only after successful pixel validation', async () => {
+  const s=source(1);request.mockResolvedValue(response());
+  s.stream.decoder.decode.mockRejectedValueOnce(Error('SHA mismatch'));
+  await expect(ensureSlice(s,0)).rejects.toThrow('SHA mismatch');
+  expect(storeImageFrame).not.toHaveBeenCalled();s.stream.dispose();
 });

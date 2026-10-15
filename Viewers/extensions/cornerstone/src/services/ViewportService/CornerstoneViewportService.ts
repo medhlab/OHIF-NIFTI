@@ -658,8 +658,10 @@ class CornerstoneViewportService extends PubSubService implements IViewportServi
     }
 
     if (initialImageIndexToUse === undefined || initialImageIndexToUse === null) {
-      initialImageIndexToUse = imageIds[0]?.startsWith('nifti:')
-        ? Math.floor(imageIds.length / 2) : this._getInitialImageIndexForViewport(viewportInfo, imageIds) || 0;
+      if (imageIds[0]?.startsWith('nifti:')) {
+        const { initialNiftiSlice } = await import('../../../../nifti/src/sourceStore');
+        initialImageIndexToUse = initialNiftiSlice(imageIds[0]) ?? Math.floor(imageIds.length / 2);
+      } else initialImageIndexToUse = this._getInitialImageIndexForViewport(viewportInfo, imageIds) || 0;
     }
 
     if (imageIds[0]?.startsWith('nifti:')) {

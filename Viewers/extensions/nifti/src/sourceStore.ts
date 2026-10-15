@@ -6,6 +6,7 @@ import { parseInWorker } from './workerClient';
 import { niftiMemoryLedger } from '../../default/src/utils/niftiMemoryLedger';
 import type { SourceDescriptor } from './types';
 import { createStream, ensureSlice, ensureComplete, startBackground, navigateSlice } from './streaming';
+import { restoredSlice, rememberSlice } from './imagePosition';
 import { scalarTypes, dtypeName } from './frameCodec.mjs';
 import { releaseBrushPreview } from './releaseBrushPreview.mjs';
 
@@ -42,6 +43,11 @@ export function memorySnapshot() {
     sourceReleasedButReachableBytes: sourceMemory?.releasedButReachableBytes || 0 };
 }
 
+export function initialNiftiSlice(imageId) {
+  const entry = metadata.get(imageId);
+  const source = entry && sources.get(entry.sourceKey);
+  return source ? restoredSlice(source.descriptor) : undefined;
+}
 export function navigateNifti(imageId) {
   const entry = metadata.get(imageId);
   if (entry) navigateSlice(sources.get(entry.sourceKey), entry.slice);
@@ -71,6 +77,7 @@ export function registerNifti(appConfig) {
       // A stale loader response or a thumbnail must not move the window.
       niftiOnDisplayed: () => {
         source.viewportDisplayed = true;
+        rememberSlice(source.descriptor, entry.slice);
         if (source.stream?.loaded.every(Boolean)) void import('./casePrefetch').then(m => m.startCasePrefetch(source));
         if (source.stream && !source.stream.disposed && !source.stream.completing && !source.stream.loaded.every(Boolean)) {
           startBackground(source, entry.slice);
