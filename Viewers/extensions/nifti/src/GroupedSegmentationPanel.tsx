@@ -1,3 +1,4 @@
+import { maskId, maskIndex, activeMask, removeMask } from './packedMasks';
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   Layers,
@@ -99,7 +100,7 @@ export default function GroupedSegmentationPanel({
   const groups = source ? groupedMasks(source) : [];
   const viewportId = viewportGridService.getState().activeViewportId;
   const activeId = service.getActiveSegmentation(viewportId)?.segmentationId;
-  const active = source?.masks.get(activeId);
+  const active = activeMask(source, activeId);
   const scene = source && scenePresentation(source);
   const { row } = useWorkspace(servicesManager);
   const presenter = useMemo(
@@ -156,7 +157,7 @@ export default function GroupedSegmentationPanel({
     presenter.stop();
     const viewportIds = service.getViewportIdsWithSegmentation(mask.segmentationId);
     for (const vp of viewportIds) service.setActiveSegmentation(vp, mask.segmentationId);
-    service.setActiveSegment(mask.segmentationId, 1);
+    service.setActiveSegment(mask.segmentationId, maskIndex(mask));
     if (mask.anatomyReadOnly || mask.saved?.anatomyReadOnly) activateNativeBrowse(servicesManager);
     presenter.apply();
     update(n => n + 1);
@@ -171,7 +172,7 @@ export default function GroupedSegmentationPanel({
         viewport.render();
       })
     );
-    if (token === selection.current && source.masks.has(mask.segmentationId)) presenter.flash(mask);
+    if (token === selection.current && source.masks.has(maskId(mask))) presenter.flash(mask);
   };
   const remove = mask => {
     if (
@@ -188,8 +189,7 @@ export default function GroupedSegmentationPanel({
       .map(m => m.uid);
     if (ids.length) measurementService.removeMany(ids);
     if (editingMask(source) === mask) exitMaskEditing(servicesManager);
-    service.remove(mask.segmentationId);
-    source.masks.delete(mask.segmentationId);
+    removeMask(servicesManager, source, mask);
   };
   useEffect(() => {
     const listener = e => {
@@ -315,13 +315,13 @@ export default function GroupedSegmentationPanel({
                   const readOnly = mask.anatomyReadOnly || mask.saved?.anatomyReadOnly;
                   const locked = segmentation.segmentLocking.isSegmentIndexLocked(
                     mask.segmentationId,
-                    1
+                    maskIndex(mask)
                   );
                   return (
                     <div
-                      key={mask.segmentationId}
+                      key={maskId(mask)}
                       data-target-id={mask.saved?.maskId || mask.segmentationId}
-                      aria-current={mask.segmentationId === activeId}
+                      aria-current={mask === active}
                       className="seg-target"
                     >
                       <div className="seg-target-heading">
@@ -334,7 +334,7 @@ export default function GroupedSegmentationPanel({
                           onClick={() =>
                             commandsManager.run('editSegmentColor', {
                               segmentationId: mask.segmentationId,
-                              segmentIndex: 1,
+                              segmentIndex: maskIndex(mask),
                             })
                           }
                         >
@@ -481,7 +481,7 @@ export default function GroupedSegmentationPanel({
                               disabled={busy || readOnly}
                               onClick={() =>
                                 execute(() =>
-                                  service.setSegmentLocked(mask.segmentationId, 1, !locked)
+                                  service.setSegmentLocked(mask.segmentationId, maskIndex(mask), !locked)
                                 )
                               }
                               title={locked ? '解锁目标' : '锁定目标'}
@@ -495,7 +495,7 @@ export default function GroupedSegmentationPanel({
                               onClick={() =>
                                 commandsManager.run('editSegmentLabel', {
                                   segmentationId: mask.segmentationId,
-                                  segmentIndex: 1,
+                                  segmentIndex: maskIndex(mask),
                                 })
                               }
                             />

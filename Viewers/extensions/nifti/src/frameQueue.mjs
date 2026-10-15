@@ -33,12 +33,22 @@ export class FrameQueue {
     this.drain(); return promise;
   }
   priority(job) { return Math.min(...[...job.consumers.values()].map(c => rank[c.kind])); }
+  recenter(center, delay = 120) {
+    clearTimeout(this.recenterTimer);
+    this.fillPaused = true;
+    const order = new Map(outwardSlices(this.count, center).map((index, i) => [index, i]));
+    for (const job of this.jobs.values()) job.order = order.get(job.index);
+    this.cancelObsolete(center, 0);
+    this.recenterTimer = setTimeout(() => {
+      this.fillPaused = false; this.drain();
+    }, delay);
+  }
   drain() {
     if (this.closed) return;
-    while (this.active < 3) {
+    while (this.active < 4) {
       const job = [...this.jobs.values()].filter(j => !j.running && j.consumers.size)
         .sort((a, b) => this.priority(a) - this.priority(b) || a.order - b.order)
-        .find(j => this.priority(j) === 0 || this.background < 2);
+        .find(j => this.priority(j) === 0 || (this.background < 3 && (!this.fillPaused || this.priority(j) === 2)));
       if (!job) break;
       job.running = true; job.background = this.priority(job) !== 0;
       this.active++; if (job.background) this.background++;
@@ -77,6 +87,7 @@ export class FrameQueue {
   }
   close() {
     this.closed = true;
+    clearTimeout(this.recenterTimer);
     for (const controller of this.nearby.values()) controller.abort();
     this.nearby.clear();
     for (const job of this.jobs.values()) {

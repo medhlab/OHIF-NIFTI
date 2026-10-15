@@ -186,7 +186,7 @@ export function createNnInteractiveController({
       const descriptor = ds.sourceDescriptor;
       if (!descriptor?.capabilities?.ai) throw new Error('此部署尚未启用 NIfTI AI。');
       if (!descriptor.sourceId) throw new Error('请先在 NIfTI 面板上传原图，再添加 AI 提示。');
-      if (descriptor.editingSegmentationId !== segmentation.segmentationId)
+      if (descriptor.editingSegmentationId !== segmentation.segmentationId || (descriptor.editingSegmentIndex && descriptor.editingSegmentIndex !== segment.segmentIndex))
         throw new Error('请先点击 Entity 的编辑按钮进入编辑状态。');
       const order = ids =>
         ids.map(id => {
@@ -233,13 +233,13 @@ export function createNnInteractiveController({
     capture,
     notify,
     retainBaseline: async (target, pixels) => {
-      const owner = target.segmentationId + ':ai-prompt-base';
+      const owner = target.segmentationId + ':segment:' + target.segmentIndex + ':ai-prompt-base';
       if (target.nativeSource)
         (await import('../../../nifti/src/sourceStore')).reserve(owner, pixels.byteLength);
       niftiMemoryLedger.trackBuffer(pixels, { source: 'nninteractive-prompt-base', owner });
     },
     releaseBaseline: target => {
-      const owner = target.segmentationId + ':ai-prompt-base';
+      const owner = target.segmentationId + ':segment:' + target.segmentIndex + ':ai-prompt-base';
       niftiMemoryLedger.releaseOwner(owner);
       if (target.nativeSource)
         void import('../../../nifti/src/sourceStore').then(module => module.release(owner));

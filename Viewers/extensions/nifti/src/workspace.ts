@@ -1,3 +1,4 @@
+import { maskId } from './packedMasks';
 import { useEffect, useState } from 'react';
 import { currentSource } from './masks';
 
@@ -56,7 +57,7 @@ export function locateFinding(source, finding, mask?) {
   if (target)
     window.dispatchEvent(
       new CustomEvent('nifti:select-target', {
-        detail: { sourceKey: source.sourceKey, segmentationId: target.segmentationId },
+        detail: { sourceKey: source.sourceKey, segmentationId: maskId(target) },
       })
     );
 }

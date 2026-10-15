@@ -1,0 +1,20 @@
+import { test } from 'node:test';
+import assert from 'node:assert/strict';
+import { installNiftiViewportGuard } from '../../cornerstone/src/services/ViewportService/niftiViewportGuard.mjs';
+test('reused DOM element drives the current viewport, not the released one', () => {
+  const handlers = new Map(), calls = [];
+  const element = { addEventListener: (name, fn) => handlers.set(name, fn) };
+  const make = id => ({getCornerstoneImage: () => ({imageId:id,niftiOnDisplayed:()=>calls.push(id)}),getCurrentImageId:()=>id});
+  let current = make('old');
+  installNiftiViewportGuard(element, () => current, 'CORNERSTONE_STACK_NEW_IMAGE');
+  handlers.get('CORNERSTONE_STACK_NEW_IMAGE')();
+  current = make('next');
+  installNiftiViewportGuard(element, () => { throw Error('must not duplicate'); }, 'CORNERSTONE_STACK_NEW_IMAGE');
+  handlers.get('CORNERSTONE_STACK_NEW_IMAGE')();
+  assert.deepEqual(calls,['old','next']);
+  let blocked=0; const event={preventDefault:()=>blocked++,stopImmediatePropagation:()=>{}};
+  handlers.get('mousedown')(event);assert.equal(blocked,0);
+  current.getCurrentImageId=()=> 'pending';
+  handlers.get('mousedown')(event);assert.equal(blocked,1);
+  handlers.get('CORNERSTONE_STACK_NEW_IMAGE')();assert.deepEqual(calls,['old','next']);
+});

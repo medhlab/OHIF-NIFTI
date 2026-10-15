@@ -10,7 +10,7 @@ test('deduplicates consumers, preserves current requests, reserves interaction s
     signal.addEventListener('abort', () => reject(signal.reason), { once: true });
   }), i => loaded.has(i));
   queue.prefetch(20); await tick();
-  assert.equal(pending.size, 2);
+  assert.equal(pending.size, 3);
   const subscriber = new AbortController();
   const first = queue.ensure(21, 'interactive', subscriber.signal).catch(e => e.name);
   const second = queue.ensure(21);
@@ -80,10 +80,42 @@ test('far navigation preempts queued background frames using the reserved slot a
     signal.addEventListener('abort', () => reject(signal.reason), { once: true });
   }), i => loaded.has(i));
   const fill = Promise.allSettled(outwardSlices(30, 10).map(i => queue.ensure(i, 'background')));
-  await tick(); assert.deepEqual(calls, [11, 9]); assert.equal(queue.active, 2);
+  await tick(); assert.deepEqual(calls, [11, 9, 12]); assert.equal(queue.active, 3);
   queue.cancelObsolete(28); const current = queue.ensure(28); await tick();
-  assert.deepEqual(calls, [11, 9, 28]); assert.equal(queue.active, 3);
+  assert.deepEqual(calls, [11, 9, 12, 28]); assert.equal(queue.active, 4);
   pending.get(28)(); await current;
   assert.equal(calls.filter(i => i === 28).length, 1);
   queue.close(); await fill; await tick(); assert.equal(queue.jobs.size, 0);
+});
+
+test('recenter pauses pending fill, keeps in-flight work, prioritizes target, then fills outward', async () => {
+  const calls = [], pending = new Map(), loaded = new Set();
+  const queue = new FrameQueue(10, (i, signal) => new Promise((resolve, reject) => {
+    calls.push(i); pending.set(i, () => { pending.delete(i); loaded.add(i); resolve(); });
+    signal.addEventListener('abort', () => reject(signal.reason), { once: true });
+  }), i => loaded.has(i));
+  const whole = Promise.all(outwardSlices(10, 2).map(i => queue.ensure(i, 'background')));
+  await tick(); assert.deepEqual(calls, [2, 3, 1]);
+  queue.recenter(5, 40);
+  queue.recenter(8, 40);
+  const target = queue.ensure(8);
+  await tick(); assert.deepEqual(calls, [2, 3, 1, 8]);
+  pending.get(2)(); pending.get(3)(); pending.get(1)(); pending.get(8)();
+  await target; await tick(); assert.deepEqual(calls, [2, 3, 1, 8]);
+  await new Promise(r => setTimeout(r, 50));
+  assert.deepEqual(calls.slice(4), [9, 7, 6]);
+  while (loaded.size < 10) { for (const finish of [...pending.values()]) finish(); await tick(); }
+  await whole; assert.equal(new Set(calls).size, 10); assert.equal(calls.length, 10);
+  queue.close();
+});
+
+test('closing a recentered queue cancels its delayed fill', async () => {
+  const calls = [];
+  const queue = new FrameQueue(3, async i => calls.push(i), () => false);
+  queue.recenter(1, 10);
+  const result = queue.ensure(1, 'background').catch(e => e.name);
+  queue.close();
+  assert.equal(await result, 'AbortError');
+  await new Promise(r => setTimeout(r, 20));
+  assert.deepEqual(calls, []);
 });

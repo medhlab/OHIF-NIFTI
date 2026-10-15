@@ -1,0 +1,24 @@
+import { enterMaskEditing, exitMaskEditing } from './editing';
+import { currentSource } from './masks';
+import { sources } from './sourceStore';
+import { segmentation } from '@cornerstonejs/tools';
+jest.mock('@cornerstonejs/core',()=>({eventTarget:{addEventListener:jest.fn()}}),{virtual:true});
+jest.mock('@cornerstonejs/tools',()=>({Enums:{Events:{}},segmentation:{state:{getSegmentation:jest.fn()},segmentLocking:{isSegmentIndexLocked:jest.fn(),setSegmentIndexLocked:jest.fn()}}}),{virtual:true});
+jest.mock('./packedMasks',()=>({maskId:m=>m.id,maskIndex:m=>m.segmentIndex}));
+jest.mock('./masks',()=>({currentSource:jest.fn()}));
+jest.mock('./sourceStore',()=>({sources:new Map(),config:{enableNiftiAI:true}}));
+jest.mock('./navigation',()=>({activateNativeBrowse:jest.fn()}));
+test('switching between sibling Entities restores initially undefined locks as false',()=>{
+ const first={id:'a',segmentationId:'f',segmentIndex:1},second={id:'b',segmentationId:'f',segmentIndex:2};
+ const source={descriptor:{},masks:new Map([['a',first],['b',second]])};sources.clear();sources.set('s',source);
+ currentSource.mockReturnValue({source,viewportId:'v'});
+ const locked=new Map();
+ segmentation.state.getSegmentation.mockReturnValue({segments:{1:{},2:{}}});
+ segmentation.segmentLocking.isSegmentIndexLocked.mockImplementation((id,index)=>locked.get(index));
+ segmentation.segmentLocking.setSegmentIndexLocked.mockImplementation((id,index,value=true)=>locked.set(index,value));
+ const manager={services:{segmentationService:{setActiveSegmentation:jest.fn(),setActiveSegment:jest.fn()}}},commands={run:jest.fn()};
+ enterMaskEditing(manager,commands,first);expect(locked.get(2)).toBe(true);
+ expect(()=>enterMaskEditing(manager,commands,second)).not.toThrow();
+ expect(locked.get(2)).toBe(false);expect(locked.get(1)).toBe(true);
+ exitMaskEditing(manager);expect(locked.get(1)).toBe(false);expect(locked.get(2)).toBe(false);
+});

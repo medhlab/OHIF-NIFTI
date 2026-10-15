@@ -1,4 +1,6 @@
-import { registerNifti, memorySnapshot } from './sourceStore';
+import { StackViewport } from '@cornerstonejs/core';
+import { installStackScrollGuard } from './stackScrollGuard.mjs';
+import { registerNifti, memorySnapshot, navigateNifti } from './sourceStore';
 import { createDataSource, getSopClassHandlerModule } from './dataSource';
 import WorkspacePanel from './WorkspacePanel';
 import AnnotationToolbar from './AnnotationToolbar';
@@ -14,6 +16,7 @@ export { activateNativeBrowse } from './navigation';
 export default {
   id: '@ohif/extension-nifti',
   preRegistration({ appConfig, servicesManager }) {
+    installStackScrollGuard(StackViewport, navigateNifti);
     registerNifti(appConfig);
     attachMaskEvents();
     installAnatomyReadOnlyGuard(servicesManager);

@@ -163,3 +163,7 @@ def import_anatomy(case_id: str, file: UploadFile = File(...), labelMap: str = F
                         annotationCaseId=None, annotationEntityId=None, expectedCaseRevision=None,
                         annotationRequestKey=None, anatomyCaseId=case_id)
     return result
+
+# Keep dataset membership separate from annotation revisions and worklists.
+from monailabel.endpoints.annotation_datasets import router as datasets_router
+router.include_router(datasets_router)

@@ -1,3 +1,4 @@
+import { maskIndex, activeMask as selectedMask } from './packedMasks';
 import React, { useEffect, useRef, useState } from 'react';
 import { useSystem } from '@ohif/core';
 import { createPortal } from 'react-dom';
@@ -227,7 +228,7 @@ export default function AnnotationToolbar() {
   const prepareManual = async () => {
     if (task.current || busy) throw Error('请等待当前操作完成。');
     const mask = currentEditingMask(servicesManager);
-    if (segmentation.segmentLocking.isSegmentIndexLocked(mask.segmentationId, 1))
+    if (segmentation.segmentLocking.isSegmentIndexLocked(mask.segmentationId, maskIndex(mask)))
       throw Error('当前 mask 已锁定，请先解锁。');
   };
   const prepareAI = async () => {
@@ -278,7 +279,7 @@ export default function AnnotationToolbar() {
         ? '橡皮擦'
         : activeToolName || '浏览');
   const editing = editingMask(source);
-  const activeMask = editing || source?.masks.get(activeId);
+  const activeMask = editing || selectedMask(source, activeId);
   const toggle = name => setMenu(menu === name ? '' : name);
   return (
     <div

@@ -104,7 +104,14 @@ export default function ReportFindings({
       setExpandedFindingId(observation.findingId);
     if (observation.evidenceIds[0]) focus(observation.evidenceIds[0], observation.findingId);
   };
-  const selectFinding = finding => {
+  const selectFinding = (finding, locate = true) => {
+    if (busy) return;
+    if (locate && expandedFindingId !== finding.id) {
+      const firstLink = context.links.find(link => link.findingId === finding.id);
+      const entity = firstLink && context.entities.find(e => e.id === firstLink.entityId);
+      setSelectedEntityId(entity?.id || '');
+      if (entity && !isEntityEmpty(entity)) onLocateEntity(entity);
+    }
     setFindingsOpen(true);
     onSelectFinding(finding.id);
     setSelectedObservation('');
@@ -517,7 +524,7 @@ export default function ReportFindings({
                   title="新增 Entity 并绘制"
                   disabled={busy}
                   onClick={() => {
-                    selectFinding(finding);
+                    selectFinding(finding, false);
                     onAddEntity(finding.id, selected?.findingId === finding.id && selected.assertion !== 'negated' ? selected.id : undefined);
                   }}
                 >
@@ -573,8 +580,6 @@ export default function ReportFindings({
         {context.findings.length > 0 && !filtered.length && (
           <p className="rf-empty">没有匹配的 Finding。</p>
         )}
-      </div>
-      </div>
       {extraObservations.length > 0 && (
         <details className="rf-extra">
           <summary>其他报告提示 · {extraObservations.length}</summary>
@@ -583,6 +588,8 @@ export default function ReportFindings({
           {selected && !selected.findingId && renderObservationDetails()}
         </details>
       )}
+      </div>
+      </div>
       {extraction?.rejected.length > 0 && (
         <details className="rf-rejected">
           <summary>提取问题 · {extraction.rejected.length} 条</summary>
