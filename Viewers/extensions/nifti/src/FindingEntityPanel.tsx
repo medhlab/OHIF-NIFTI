@@ -1,3 +1,4 @@
+import { firstReadyEntity } from './findingLocation';
 import { maskId, maskIndex, removeMask } from './packedMasks';
 import { entitiesForFinding, entityLabel } from './entityLabels.mjs';
 import React, { useEffect, useRef, useState } from 'react';
@@ -222,17 +223,33 @@ export default function FindingEntityPanel() {
         ![...target.masks.values()].some((m: any) =>
           m.entityId === entity.id || m.saved?.maskId === entity.maskId
         ));
+      const started = performance.now();
+      const pending = new Set(missing.map(e => e.maskId));
+      let located = false;
+      const locateFirst = async () => {
+        if (located || sourceRef.current !== target) return;
+        const first = firstReadyEntity(entities, pending, entity =>
+          [...target.masks.values()].find((m: any) =>
+            m.entityId === entity.id || (entity.maskId && m.saved?.maskId === entity.maskId)
+          ), mask => maskLocation(target, mask));
+        if (!first) return;
+        await locateEntity(target, first);
+        located = true;
+        console.debug('[nifti-finding-locate]', JSON.stringify({ ms: performance.now() - started }));
+      };
+      await locateFirst();
       const results = missing.length
-        ? await loadSaved(servicesManager, undefined, [...new Set(missing.map(e => e.maskId))])
+        ? await loadSaved(servicesManager, undefined, [...pending], {
+            onSettled: async result => {
+              pending.delete(result.item.maskId);
+              await locateFirst();
+            },
+          })
         : [];
       if (sourceRef.current !== target) return;
-      const first = entities.find(entity => {
-        const mask = [...target.masks.values()].find((m: any) =>
-          m.entityId === entity.id || (entity.maskId && m.saved?.maskId === entity.maskId)
-        );
-        return mask && maskLocation(target, mask);
-      });
-      if (first) await locateEntity(target, first);
+      pending.clear();
+      await locateFirst();
+      console.debug('[nifti-finding-ready]', JSON.stringify({ ms: performance.now() - started }));
       const failures = results.filter(result => result.status === 'failed');
       if (failures.length) throw Error(`部分 Entity mask 加载失败：${failures.map(result => result.error).join('；')}。点击 Finding 可重试。`);
     });
