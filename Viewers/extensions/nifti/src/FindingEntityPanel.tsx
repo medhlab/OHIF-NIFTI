@@ -3,7 +3,7 @@ import { entitiesForFinding, entityLabel } from './entityLabels.mjs';
 import React, { useEffect, useRef, useState } from 'react';
 import { useSystem } from '@ohif/core';
 import { Crosshair, Trash2, Pencil } from 'lucide-react';
-import { currentSource, createMask, loadSaved, isMaskDirty } from './masks';
+import { currentSource, createMask, loadSaved, isMaskDirty, maskAppearance } from './masks';
 import {
   annotationRequest,
   installAnnotationContext,
@@ -47,6 +47,7 @@ export default function FindingEntityPanel() {
       workspace.manifest.items?.some(
         row => row.caseId === workspace.caseId && row.sourceId === source?.descriptor.sourceId
       ));
+  const selectFindingRef = useRef<(id: string, locate?: boolean) => void>();
   const sourceRef = useRef(source);
   sourceRef.current = source;
   const refresh = async (target, signal?) => {
@@ -123,7 +124,7 @@ export default function FindingEntityPanel() {
     };
     const selected = event => {
       if (event.detail?.sourceKey === sourceRef.current?.sourceKey)
-        setActiveFinding(event.detail.findingId);
+        selectFindingRef.current?.(event.detail.findingId, event.detail.locate !== false);
     };
     window.addEventListener('nifti:annotation-updated', updated);
     window.addEventListener('nifti:select-finding', selected);
@@ -211,6 +212,38 @@ export default function FindingEntityPanel() {
     else viewport.jumpToWorld(location.world);
     viewport.render();
   };
+  const selectFinding = (findingId, locate = true) => {
+    setActiveFinding(findingId);
+    if (!locate) return;
+    return run(async target => {
+      if (!target?.annotationCase) return;
+      const entities = entitiesForFinding(target.annotationCase, findingId);
+      const missing = entities.filter(entity => entity.maskId &&
+        ![...target.masks.values()].some((m: any) =>
+          m.entityId === entity.id || m.saved?.maskId === entity.maskId
+        ));
+      const results = missing.length
+        ? await loadSaved(servicesManager, undefined, [...new Set(missing.map(e => e.maskId))])
+        : [];
+      if (sourceRef.current !== target) return;
+      const first = entities.find(entity => {
+        const mask = [...target.masks.values()].find((m: any) =>
+          m.entityId === entity.id || (entity.maskId && m.saved?.maskId === entity.maskId)
+        );
+        return mask && maskLocation(target, mask);
+      });
+      if (first) await locateEntity(target, first);
+      const failures = results.filter(result => result.status === 'failed');
+      if (failures.length) throw Error(`部分 Entity mask 加载失败：${failures.map(result => result.error).join('；')}。点击 Finding 可重试。`);
+    });
+  };
+  selectFindingRef.current = selectFinding;
+  const entityColor = entity => {
+    const mask = [...(source?.masks.values() || [])].find((m: any) =>
+      m.entityId === entity.id || (entity.maskId && m.saved?.maskId === entity.maskId)
+    );
+    return mask ? maskAppearance(servicesManager, mask) : undefined;
+  };
   const editingEntityId = editingMask(source)?.entityId;
   const deleteEntity = entity =>
     run(async target => {
@@ -284,7 +317,7 @@ export default function FindingEntityPanel() {
             categories={categories}
             busy={busy || source?.annotationStatus?.busy}
             activeFinding={activeFinding}
-            onSelectFinding={setActiveFinding}
+            onSelectFinding={selectFinding}
             onSelection={(next, quote) => {
               setEvidence(next);
               setSelection(quote);
@@ -295,6 +328,7 @@ export default function FindingEntityPanel() {
             onEditEntity={entity => run(target => editEntity(target, entity))}
             onLocateEntity={entity => run(target => locateEntity(target, entity))}
             editingEntityId={editingEntityId}
+            entityColor={entityColor}
             isEntityEmpty={entity => entityMaskEmpty(source, entity)}
             onUnlink={linkId => run(target => mutate(target, { operation: 'unlink', linkId }))}
             onCategory={(findingId, value) =>
@@ -385,7 +419,7 @@ export default function FindingEntityPanel() {
                 data-editing={editingEntityId === entity.id}
               >
                 <div className="rf-entity-header">
-                  <EntityName entity={entity} prefix={entityLabel(context, entity.id)} selected={selectedEntityId === entity.id || editingEntityId === entity.id}
+                  <EntityName entity={entity} color={entityColor(entity)} prefix={entityLabel(context, entity.id)} selected={selectedEntityId === entity.id || editingEntityId === entity.id}
                     empty={entityMaskEmpty(source, entity)} busy={busy || source?.annotationStatus?.busy}
                     onSelect={() => { setSelectedEntityId(entity.id); if (!entityMaskEmpty(source, entity)) run(target => locateEntity(target, entity)); }}
                     onRename={name => run(target => mutate(target, { operation: 'entityMetadata', entityId: entity.id, name }))} />

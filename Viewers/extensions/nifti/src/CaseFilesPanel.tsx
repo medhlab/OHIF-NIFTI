@@ -2,7 +2,7 @@ import { maskId } from './packedMasks';
 import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useSystem } from '@ohif/core';
-import { ChevronDown, ChevronRight, Scan, FileText, Layers, Circle, ArrowLeft } from 'lucide-react';
+import { ChevronDown, ChevronRight, Layers, Circle, ArrowLeft } from 'lucide-react';
 import { findingMasks, locateFinding, useWorkspace } from './workspace';
 import { isMaskDirty } from './masks';
 import './workspace.css';
@@ -159,7 +159,6 @@ export default function CaseFilesPanel() {
                 };
               })
             : item.findings || [];
-          const reports = context?.reports || item.reports || [];
           const select = (finding, mask?) => {
             locateFinding(source, finding, mask);
             window.dispatchEvent(
@@ -167,7 +166,7 @@ export default function CaseFilesPanel() {
             );
             window.dispatchEvent(
               new CustomEvent('nifti:select-finding', {
-                detail: { sourceKey: source.sourceKey, findingId: finding.id },
+                detail: { sourceKey: source.sourceKey, findingId: finding.id, locate: !mask },
               })
             );
           };
@@ -176,6 +175,7 @@ export default function CaseFilesPanel() {
               key={item.caseId}
               className={`nw-case ${active ? 'active' : ''}`}
             >
+              <div className="nw-case-header">
               <button
                 className="nw-case-pick"
                 disabled={!!loading || source?.annotationStatus?.busy || !source}
@@ -195,25 +195,10 @@ export default function CaseFilesPanel() {
                   </small>
                 </span>
               </button>
+              {active && <CaseCompletion key={source?.sourceKey} source={source} servicesManager={servicesManager} />}
+              </div>
               {active && (
                 <div className="nw-tree">
-                  <CaseCompletion key={source?.sourceKey} source={source} servicesManager={servicesManager} />
-                  <div className="nw-tree-label nw-image-entry">
-                    <Scan size={16} />
-                    <span>原图</span>
-                    <small>NIfTI</small>
-                  </div>
-                  <button
-                    className="nw-report-entry"
-                    onClick={() =>
-                      window.dispatchEvent(
-                        new CustomEvent('nifti:workspace-tab', { detail: 'report' })
-                      )
-                    }
-                  >
-                    <FileText size={16} />
-                    报告<small>{reports.length} 来源</small>
-                  </button>
                   <div className="nw-tree-label">
                     <Layers size={16} />
                     <span>Findings & masks</span>

@@ -391,11 +391,16 @@
   background: var(--wb-panel);
 }
 
-.nw-case-completion { display:flex; flex-wrap:wrap; align-items:center; gap:8px; padding:8px 0; margin-bottom:6px; border-bottom:1px solid #453652; font-size:12px; }
-.nw-case-completion button { margin-left:auto; padding:4px 8px; border:1px solid #80629d; border-radius:5px; background:#392a48; }
-.nw-case-completion button:disabled { opacity:.5; }
-.nw-case-completion small { flex-basis:100%; color:#b7abc7; }
-.nw-case-completion [role=alert] { color:#ffb7b7; }
+/* Case-level status/action stays beside the case name, outside its navigation button. */
+.nw-case-header { display:flex; align-items:flex-start; gap:4px; }
+.nw-case-header .nw-case-pick { flex:1; min-width:0; }
+.nw-case-completion { flex:0 0 auto; position:relative; margin:4px 4px 0 0; }
+.nw-case-completion .nw-completion-action { display:flex; align-items:center; justify-content:center; width:28px; height:28px; padding:0; border:1px solid #62516f; border-radius:5px; color:#c1b4cf; background:transparent; }
+.nw-case-completion .nw-completion-action:hover:not(:disabled) { color:#e4d2ff; background:#392a48; }
+.nw-case-completion .nw-completion-action[data-complete='true'] { color:#7edbb2; border-color:#437865; }
+.nw-case-completion .nw-completion-action:disabled:not([data-complete='true']) { opacity:.5; }
+.nw-case-completion [role=alert] { position:absolute; right:0; top:32px; z-index:10; width:210px; padding:6px 8px; border:1px solid #80505a; border-radius:5px; background:#2c2029; color:#ffb7b7; font-size:12px; }
+
 
 /* The workspace owns its height; only report/list bodies scroll. */
 body.nifti-workbench .side-panel-scrollable:has(.nw-shell) { overflow: hidden; }

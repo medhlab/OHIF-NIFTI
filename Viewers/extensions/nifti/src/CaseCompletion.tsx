@@ -1,6 +1,7 @@
 import React, { useRef, useState, useEffect } from 'react';
 import { annotationRequest, installAnnotationContext } from './annotationClient';
 import { isMaskDirty } from './masks';
+import { CircleCheck, CircleDashed, Loader2 } from 'lucide-react';
 
 export default function CaseCompletion({ source, servicesManager }) {
   const [busy, setBusy] = useState(false), [error, setError] = useState('');
@@ -27,10 +28,11 @@ export default function CaseCompletion({ source, servicesManager }) {
     }
   };
   return <section className="nw-case-completion" aria-label="当前病例完成状态">
-    <strong>本例 · {complete ? '已完成' : '待完成'}</strong>
-    <button disabled={busy || complete || !context.sourceId || source.annotationStatus?.busy}
-      onClick={markComplete}>{busy ? '检查中…' : complete ? '已完成' : '标记完成'}</button>
-    {complete && <small>继续修改标注后，本例会自动恢复为待完成。</small>}
+    <button type="button" className="nw-completion-action" data-complete={complete}
+      title={busy ? '正在检查完成状态' : complete ? '已完成；修改标注后自动恢复待完成' : '待完成 · 点击标记完成'}
+      aria-label={busy ? '正在检查完成状态' : complete ? '病例已完成' : '标记完成'}
+      disabled={busy || complete || !context.sourceId || source.annotationStatus?.busy}
+      onClick={markComplete}>{busy ? <Loader2 size={18} className="animate-spin" /> : complete ? <CircleCheck size={18} /> : <CircleDashed size={18} />}</button>
     {error && <small role="alert">{error}</small>}
   </section>;
 }
