@@ -1,5 +1,5 @@
 jest.mock('@cornerstonejs/core', () => ({ cache: { getImage: jest.fn(), getImageLoadObject: jest.fn() }, eventTarget: { addEventListener: jest.fn() } }), { virtual: true });
-jest.mock('@cornerstonejs/tools', () => ({ segmentation: { state: { getSegmentation: jest.fn() } }, Enums: { SegmentationRepresentations: { Labelmap: 'Labelmap' } } }), { virtual: true });
+jest.mock('@cornerstonejs/tools', () => ({ segmentation: { state: { getSegmentation: jest.fn() }, segmentIndex: { getActiveSegmentIndex: () => 1 }, segmentLocking: { setSegmentIndexLocked: jest.fn() } }, Enums: { SegmentationRepresentations: { Labelmap: 'Labelmap' } } }), { virtual: true });
 jest.mock('@cornerstonejs/tools/segmentation/triggerSegmentationEvents', () => ({ triggerSegmentationDataModified: jest.fn() }), { virtual: true });
 jest.mock('./sourceStore', () => {
   const reservations = new Map();
@@ -36,7 +36,9 @@ beforeEach(() => {
       createLabelmapForDisplaySet: jest.fn(async (_ds, { segmentationId: id }) => {
         const ids = [id + ':0', id + ':1']; ids.forEach(i => images.set(i, { voxelManager: { getScalarData: () => images.get(i).data }, data: new Uint8Array(4) }));
         segments.set(id, { representationData: { Labelmap: { imageIds: ids } } });
-      }), addSegmentationRepresentation: jest.fn(), setSegmentColor: jest.fn(), setActiveSegmentation: jest.fn(), setActiveSegment: jest.fn(), getActiveSegmentation: jest.fn(),
+      }), addOrUpdateSegmentation: jest.fn(s => Object.assign(segments.get(s.segmentationId), s)),
+      getViewportIdsWithSegmentation: () => [],
+      addSegmentationRepresentation: jest.fn(), setSegmentColor: jest.fn(), setActiveSegmentation: jest.fn(), setActiveSegment: jest.fn(), getActiveSegmentation: jest.fn(),
       remove: jest.fn(id => { segments.delete(id); source.masks.delete(id); reservations.delete(id); }),
     } } };
   cache.getImage.mockImplementation(id => images.get(id)); segmentation.state.getSegmentation.mockImplementation(id => segments.get(id));
@@ -121,18 +123,27 @@ test('restore replaces only a clean selected target after commit and preserves m
   expect(record.version).toBe(3); expect(source.masks.size).toBe(1);
   const current = [...source.masks.values()][0];
   expect(current.saved.maskId).toBe(saved.maskId); expect(current.saved.version).toBe(3);
-  expect(current.segmentationId).not.toBe(old.segmentationId);
+  // Packed storage restores the label in place, retaining its volume and siblings.
+  expect(current.segmentationId).toBe(old.segmentationId);
   expect([...reservations.values()]).toEqual([8]);
 });
 
 test('dirty target is rejected before restore; a late edit after commit is never overwritten', async () => {
   await loadSaved(manager);
-  const old = [...source.masks.values()][0];old.revision++;
+  const old = [...source.masks.values()][0];old.revision++;old.hashes[0]++;
   await expect(restoreAnnotation(manager, source, { ...saved, version: 1 }, 2, 'request', undefined, jest.fn())).rejects.toThrow(/未保存修改/);
   expect(request).toHaveBeenCalledTimes(1); // Original list call only.
-  old.savedRevision = old.revision;
-  request.mockImplementationOnce(async () => { old.revision++; return { json: async () => ({ item: { ...saved, version: 3, restoredFrom: 1 } }) }; });
+  old.savedRevision = old.revision;old.savedHashes = [...old.hashes];
+  request.mockImplementationOnce(async () => { old.revision++; old.hashes[0]++; return { json: async () => ({ item: { ...saved, version: 3, restoredFrom: 1 } }) }; });
   await expect(restoreAnnotation(manager, source, { ...saved, version: 1 }, 2, 'request', undefined, jest.fn())).rejects.toThrow(/服务器已保存恢复版本 v3/);
   expect([...source.masks.values()]).toEqual([old]); expect(old.saved.version).toBe(2);
   expect([...reservations.values()]).toEqual([8]);
+});
+test('restore rejects sibling overlap before creating a server version', async () => {
+ await loadSaved(manager);const current=[...source.masks.values()][0];
+ const data=images.get(current.imageIds[0]).data; data[0]=2;
+ request.mockClear();
+ await expect(restoreAnnotation(manager,source,{...saved,version:1},2,'request',undefined,jest.fn())).rejects.toThrow(/重叠/);
+ expect(request).not.toHaveBeenCalled();expect(data[0]).toBe(2);expect(current.saved.version).toBe(2);
+ expect([...reservations.values()]).toEqual([8]);
 });

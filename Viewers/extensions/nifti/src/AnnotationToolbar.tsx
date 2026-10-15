@@ -1,3 +1,4 @@
+import { saveSummary } from './maskSaveState.mjs';
 import { maskIndex, activeMask as selectedMask } from './packedMasks';
 import React, { useEffect, useRef, useState } from 'react';
 import { useSystem } from '@ohif/core';
@@ -211,8 +212,9 @@ export default function AnnotationToolbar() {
   const save = signal =>
     saveAll(servicesManager, signal, stage => setMessage(stage)).then(results => {
       const failures = results.filter(r => !r.success);
-      setMessage(`已保存 ${results.length - failures.length} / ${results.length} 个 mask。`);
-      if (failures.length) throw Error(failures.map(r => r.error).join('；'));
+      const summary = saveSummary(results);
+      setMessage(summary);
+      if (failures.length) throw Error(summary + ' ' + failures.map(r => r.error).join('；'));
     });
   const add = (group?) =>
     run(async signal => {
@@ -391,7 +393,8 @@ export default function AnnotationToolbar() {
                   disabled={busy || !source?.descriptor.sourceId}
                   onClick={() => {
                     setError('');
-                    setHistoryMaskId('');
+                    setHistoryMaskId(activeMask?.saved?.maskId || '');
+                    setMenu('');
                     setHistoryOpen(true);
                   }}
                 />
@@ -526,6 +529,7 @@ export default function AnnotationToolbar() {
               onAdd={add}
               onCopy={id => run(signal => copyGroup(servicesManager, id, signal))}
               onHistory={id => {
+                setMenu('');
                 setHistoryMaskId(id);
                 setHistoryOpen(true);
               }}

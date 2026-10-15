@@ -1,4 +1,8 @@
 jest.mock('./masks', () => ({ currentSource: jest.fn() }));
+jest.mock('@cornerstonejs/core', () => ({}), { virtual: true });
+jest.mock('@cornerstonejs/tools', () => ({}), { virtual: true });
+jest.mock('@cornerstonejs/tools/segmentation/triggerSegmentationEvents', () => ({}), { virtual: true });
+jest.mock('./sourceStore', () => ({}));
 import { findingMasks, getWorkspace, locateFinding, selectFinding, setWorkspace, workspaceQuery } from './workspace';
 
 test('workspace navigation preserves a selection only inside the same manifest case', () => {

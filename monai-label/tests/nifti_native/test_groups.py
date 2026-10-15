@@ -19,7 +19,7 @@ def test_labels_share_group_and_save_restore_copy_keep_membership(client, tmp_pa
     a, b = client.post(url, data=fields, files={'file': (path2.name, path2.read_bytes())}).json()['items']
     group = a['segmentationSet']; assert group == b['segmentationSet']
     assert {a['originalLabel'], b['originalLabel']} == {1, 4}
-    seed = bytes([1]) + bytes(source['count'] - 1)
+    seed = bytes([1,1]) + bytes(source['count'] - 2)
     raw = dict(fields, raw='true', provenance=json.dumps({'segmentationSet': group}))
     updated = client.post(url, data=dict(raw, maskId=a['maskId'], expectedVersion=1), files={'file': ('seed.bin', seed)}).json()['items'][0]
     assert updated['segmentationSet'] == group and updated['version'] == 2

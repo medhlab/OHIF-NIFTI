@@ -4,6 +4,7 @@ import hashlib
 from fastapi import APIRouter, Body, File, Form, Header, UploadFile
 from monailabel.endpoints.nifti_images import database, enabled, get_source, save_masks
 from monailabel.utils.others import annotation_domain as domain
+from monailabel.utils.others.annotation_legacy import migrate_manifest
 
 router = APIRouter(prefix='/api/annotation/v1', tags=['Lesion annotation'])
 
@@ -65,16 +66,9 @@ def register_case(payload: dict = Body(...), idempotency_key: str = Header(...))
                 domain.fail('VOLUME_IMMUTABLE', '不能替换病例参考 CT。', 409)
             if case['sourceId'] is None:
                 case['sourceId'] = source['sourceId']
-                # New manifest ingestion: preserve each supplied text chunk exactly, without reconstructing missing offsets.
-                worklist = case.get('worklistId', '')
-                if worklist and worklist.startswith('manifest-'):
-                    manifest_row = db.execute('SELECT metadata FROM case_manifests WHERE id=?', (worklist[len('manifest-'):],)).fetchone()
-                    external_key = db.execute('SELECT external_key FROM annotation_cases WHERE id=?', (case_id,)).fetchone()[0]
-                    item = next((i for i in json.loads(manifest_row[0])['items'] if i['caseId'] == external_key), None) if manifest_row else None
-                    for incoming in (item or {}).get('reports', []):
-                        case['reports'].append({'id': domain.identity(), 'version': 1, 'name': incoming['name'], 'sections': [
-                            {'id': domain.identity(), 'name': s['section'], 'text': s['text'], 'textSha256': hashlib.sha256(s['text'].encode()).hexdigest()}
-                            for s in incoming['statements']]})
+                migrate_manifest(db, case)
+                domain.persist(db, case)
+            elif migrate_manifest(db, case):
                 domain.persist(db, case)
         else:
             # Explicit registration allocates a Case. It does not infer medical identity from image hashes.
@@ -92,9 +86,14 @@ def register_case(payload: dict = Body(...), idempotency_key: str = Header(...))
 def context(case_id: str):
     enabled()
     with database() as db:
+        db.execute('BEGIN IMMEDIATE')
         domain.schema(db)
         case = domain.read(db, case_id)
+        if migrate_manifest(db, case):
+            domain.persist(db, case)
     result = domain.reply(case)
+    with database() as db:
+        result['maskMetadata'] = [domain.mask_metadata(db, case['sourceId'], json.loads(row[0])) for row in db.execute('SELECT metadata FROM masks WHERE source=? AND (id,version) IN (SELECT id,max(version) FROM masks WHERE source=? GROUP BY id)', (case['sourceId'], case['sourceId']))]
     result['volume'] = get_source(case['sourceId']) if case['sourceId'] else None
     return result
 

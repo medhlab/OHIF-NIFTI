@@ -41,7 +41,7 @@ export default function ToolbarIconButton({
           </Button>
         </span>
       </TooltipTrigger>
-      <TooltipContent side="bottom">{label}</TooltipContent>
+      <TooltipContent side="bottom" style={{ zIndex: 110 }}>{label}</TooltipContent>
     </Tooltip>
   );
 }

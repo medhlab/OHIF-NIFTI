@@ -68,8 +68,10 @@ def test_multi_label_versions_and_export(client, tmp_path):
         seed = (labels == m['originalLabel']).astype(np.uint8).transpose(2, 1, 0).tobytes()
         fields = {'geometryHash': source['geometryHash'], 'raw': 'true', 'maskId': m['maskId'], 'expectedVersion': '1', 'label': 'lesion / target'}
         saved = client.post(url, data=fields, files={'file': ('seed.bin', seed)}).json()['items'][0]
-        assert saved['version'] == 2
+        assert saved['version'] == 1 and saved['saveStatus'] == 'metadata'
         assert saved['name'] == 'lesion / target'
+        assert client.post(url, data=fields, files={'file': ('seed.bin', seed)}).json()['items'][0]['saveStatus'] == 'skipped'
+        fields['expectedVersion'] = '2'
         assert client.post(url, data=fields, files={'file': ('seed.bin', seed)}).status_code == 409
     assert client.get('/nifti-images/' + source['sourceId'] + '/export').status_code == 200
 
@@ -128,6 +130,7 @@ def test_orphan_version_is_never_overwritten(client, tmp_path):
     orphan.mkdir()
     (orphan / 'uncommitted').write_text('preserve for audit')
     fields.update(maskId=first['maskId'], expectedVersion='1')
+    seed = bytes([1]) + seed[1:]
     reply = client.post(url, data=fields, files={'file': ('mask.bin', seed)})
     assert reply.status_code == 200, reply.text
     assert reply.json()['items'][0]['version'] == 3

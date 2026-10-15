@@ -1,3 +1,7 @@
+jest.mock('@cornerstonejs/core', () => ({}), { virtual: true });
+jest.mock('@cornerstonejs/tools', () => ({}), { virtual: true });
+jest.mock('@cornerstonejs/tools/segmentation/triggerSegmentationEvents', () => ({}), { virtual: true });
+jest.mock('./sourceStore', () => ({}));
 import { createPresentationController, targetPresentation, targetStyle, scenePresentation } from './presentation';
 import { groupPresentation } from './groups';
 
