@@ -1,3 +1,4 @@
+import { activeMask } from './packedMasks';
 import { eventTarget } from '@cornerstonejs/core';
 import { Enums } from '@cornerstonejs/tools';
 import { currentSource } from './masks';
@@ -7,7 +8,7 @@ export function activeAnatomyReadOnly(servicesManager) {
   try {
     const { source, viewportId } = currentSource(servicesManager);
     const id = servicesManager.services.segmentationService.getActiveSegmentation(viewportId)?.segmentationId;
-    const mask = source.masks.get(id);
+    const mask = activeMask(source, id);
     return !!(mask?.anatomyReadOnly || mask?.saved?.anatomyReadOnly);
   } catch { return false; }
 }

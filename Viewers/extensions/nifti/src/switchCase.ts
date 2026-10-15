@@ -1,3 +1,5 @@
+import { bindings } from './packedMasks';
+import { cancelCasePrefetch, startCasePrefetch } from './casePrefetch';
 import { DicomMetadataStore } from '@ohif/core';
 import { utilities } from '@cornerstonejs/core';
 import { request, downloadSource, openManifestCase } from './api';
@@ -23,6 +25,8 @@ async function displayed(services, next) {
  * Do not navigate React Router: Mode treats every location change as a full teardown.
  */
 export async function switchCase({ servicesManager, previous, manifest, row, signal, progress }) {
+  previous.prefetchSuppressed = true;
+  cancelCasePrefetch();
   const services = servicesManager.services;
   const { displaySetService, hangingProtocolService, segmentationService, measurementService } = services;
   let next, committed = false, switching = false;
@@ -40,6 +44,7 @@ export async function switchCase({ servicesManager, previous, manifest, row, sig
       const transport = await prepareStreaming(metadata.sourceId, metadata, signal, progress);
       signal.throwIfAborted();
       next = openStreaming(metadata, transport);
+      next.prefetchSuppressed = true;
       progress('加载首层…');
       await ensureSlice(next, Math.floor(next.imageIds.length / 2), signal);
     } else {
@@ -64,6 +69,7 @@ export async function switchCase({ servicesManager, previous, manifest, row, sig
     await displayed(services, next);
     activateNativeBrowse(servicesManager);
     const updated = reply.manifest || { ...manifest, items: manifest.items.map(item => item.caseId === row.caseId ? { ...item, sourceId: metadata.sourceId } : item) };
+    if (manifest.prefetchSelection) updated.prefetchSelection = manifest.prefetchSelection;
     setWorkspace(updated, row.caseId);
     next.pendingMaskIds = reply.maskIds;
     // The panel may have seen the source before first render completed.
@@ -72,7 +78,9 @@ export async function switchCase({ servicesManager, previous, manifest, row, sig
     const params = `?source=${encodeURIComponent(next.sourceKey)}&sourceId=${metadata.sourceId}${reply.maskIds.length ? '&maskIds=' + reply.maskIds.join(',') : ''}${workspaceQuery()}`;
     window.history.replaceState(window.history.state, '', '/nifti-viewer/nifti' + params);
     committed = true;
-    for (const mask of previous.masks.values()) segmentationService.remove(mask.segmentationId);
+    next.prefetchSuppressed = false;
+    startCasePrefetch(next);
+    for (const id of new Set([...previous.masks.values()].flatMap((mask: any) => bindings(mask).map(b => b.segmentationId)))) segmentationService.remove(id);
     const measurements = measurementService.getMeasurements().filter(m => m.referenceStudyUID === previous.studyUID).map(m => m.uid);
     if (measurements.length) measurementService.removeMany(measurements);
     const history = utilities.HistoryMemo.DefaultHistoryMemo;
@@ -91,6 +99,11 @@ export async function switchCase({ servicesManager, previous, manifest, row, sig
       releaseStudyLayoutState(next.studyUID);
       for (const ds of displaySetService.getActiveDisplaySets().filter(ds => ds.sourceKey === next.sourceKey)) displaySetService.deleteDisplaySet(ds.displaySetInstanceUID);
       releaseSource(next.sourceKey);
+    }
+    if (!committed && sources.has(previous.sourceKey)) {
+      previous.prefetchSuppressed = false;
+      previous.prefetchStarted = false;
+      startCasePrefetch(previous);
     }
     throw error;
   }

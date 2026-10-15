@@ -1,3 +1,5 @@
+import { triggerSegmentationDataModified } from '@cornerstonejs/tools/segmentation/triggerSegmentationEvents';
+import { maskId, bindings, writeBinary } from './packedMasks';
 import { sources, reserve, release } from './sourceStore';
 import { downloadMask, request } from './api';
 import { annotationRequest, installAnnotationContext } from './annotationClient';
@@ -46,19 +48,16 @@ async function installVersion(servicesManager, source, item, pixels, signal) {
   const { segmentationService, viewportGridService } = servicesManager.services;
   const viewportId = viewportGridService.getState().activeViewportId;
   const active = segmentationService.getActiveSegmentation(viewportId)?.segmentationId;
-  const id = await createMask(servicesManager, item.name, pixels, item, signal);
-  try {
-    assertSource(servicesManager, source, signal);
-    if (existing && isMaskDirty(servicesManager, existing)) throw Error('加载期间当前标注发生变化，已保留当前编辑。');
-    const mask = source.masks.get(id);
-    Object.assign(mask, { originalLabel: item.originalLabel, originalFile: item.originalFile, alignment: item.alignment, derivedFrom: item.derivedFrom });
-    if (existing) segmentationService.remove(existing.segmentationId);
-    return mask;
-  } catch (error) {
-    segmentationService.remove(id);
-    if (active) segmentationService.setActiveSegmentation(viewportId, active);
-    throw error;
+  if (existing) {
+    writeBinary(bindings(existing), pixels);
+    for (const b of bindings(existing)) triggerSegmentationDataModified(b.segmentationId);
+    existing.saved = item; existing.savedRevision = existing.revision;
+    return existing;
   }
+  const id = await createMask(servicesManager, item.name, pixels, item, signal);
+  const mask = source.masks.get(id);
+  Object.assign(mask, { originalLabel: item.originalLabel, originalFile: item.originalFile, alignment: item.alignment, derivedFrom: item.derivedFrom });
+  return mask;
 }
 
 export async function loadLatestAnnotation(servicesManager, source, item, signal, progress) {

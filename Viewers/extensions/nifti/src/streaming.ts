@@ -1,3 +1,4 @@
+import { takePrefetchedFrame } from './frameDiskCache';
 import { FrameQueue, outwardSlices } from './frameQueue.mjs';
 import { scalarTypes, dtypeName } from './frameCodec.mjs';
 import { createFrameDecoder } from './workerClient';
@@ -46,7 +47,9 @@ async function downloadFrame(source, index, signal) {
   const total = setTimeout(timeout, 180000); let idle = setTimeout(timeout, 60000), reader;
   try {
     signal.throwIfAborted();
-    const response = await request(`/${source.descriptor.sourceId}/frames/${index}`, { signal: controller.signal, cache: 'no-store' });
+    const cached = await takePrefetchedFrame(source.descriptor.sourceId, d, index);
+    if (cached) source.stream.diskHits = (source.stream.diskHits || 0) + 1;
+    const response = cached || await request(`/${source.descriptor.sourceId}/frames/${index}`, { signal: controller.signal, cache: 'no-store' });
     if (response.headers.get('X-Nifti-Cache-Key') !== d.cacheKey || response.headers.get('X-Nifti-Frame') !== String(index)) throw Error('NIfTI frame identity mismatch.');
     const bound = frame.bytes + Math.ceil(frame.bytes / 16384) * 6 + 1024;
     if (Number(response.headers.get('content-length')) > bound) throw Error('NIfTI compressed frame exceeds its limit.');
@@ -88,17 +91,29 @@ export function createStream(source, descriptor) {
         }
       }
     } catch (error) { if (error.name !== 'AbortError') state.errors.set(index, error.message); throw error; }
-  }, index => !!state.loaded[index]);
-  state.dispose = () => { state.disposed = true; pauseComplete(source); state.queue.close(); state.decoder.dispose(); };
+  }, index => !!state.loaded[index], () => {
+    if (source.viewportDisplayed && !state.disposed && state.loaded.every(Boolean))
+      void import('./casePrefetch').then(m => m.startCasePrefetch(source));
+  });
+  state.dispose = () => { state.disposed = true; source.prefetchController?.abort(); pauseComplete(source); state.queue.close(); state.decoder.dispose(); };
   return state;
 }
 
-/** A one-shot fill starts only after an actual slice is displayed, never a thumbnail. */
+/** Reorder pending work around navigation without discarding loaded or in-flight frames. */
+export function navigateSlice(source, center) {
+  const state = source?.stream;
+  if (!state || state.disposed || state.completing || state.loaded.every(Boolean)) return;
+  state.backgroundOrigin = center;
+  state.queue.recenter(center);
+}
+
+/** Start whole-volume filling only after a real viewport has displayed an image. */
 export function startBackground(source, center) {
   const state = source.stream;
   if (!state || state.disposed || state.backgroundStarted || state.loaded.every(Boolean)) return;
-  const indices = outwardSlices(state.loaded.length, center);
-  state.backgroundStarted = true; state.backgroundOrigin = center; state.backgroundPaused = false;
+  const indices = outwardSlices(state.loaded.length, state.backgroundOrigin ?? center);
+  state.queue.recenter(state.backgroundOrigin ?? center);
+  state.backgroundStarted = true; state.backgroundOrigin = state.backgroundOrigin ?? center; state.backgroundPaused = false;
   const controller = new AbortController(); state.backgroundController = controller;
   // Lowest priority: navigation and required whole-volume operations take precedence.
   // Failed frames stay visible in errors; one failure must not stop all other slices.

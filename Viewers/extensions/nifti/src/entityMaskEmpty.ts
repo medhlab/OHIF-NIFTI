@@ -13,7 +13,7 @@ export function entityMaskEmpty(source, entity) {
   for (const id of mask.imageIds) {
     const pixels = cache.getImage(id)?.voxelManager.getScalarData();
     if (!pixels) return false;
-    if (pixels.includes(1)) { empty = false; break; }
+    if (pixels.includes(mask.segmentIndex || 1)) { empty = false; break; }
   }
   states.set(mask, { revision: mask.revision, empty });
   return empty;

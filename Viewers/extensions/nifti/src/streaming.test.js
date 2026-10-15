@@ -1,4 +1,4 @@
-import { createStream, ensureSlice, ensureComplete, prepareStreaming, startBackground, pauseComplete, requestComplete } from './streaming';
+import { createStream, ensureSlice, ensureComplete, prepareStreaming, startBackground, navigateSlice, pauseComplete, requestComplete } from './streaming';
 import { request } from './api';
 import { createFrameDecoder } from './workerClient';
 
@@ -110,10 +110,10 @@ test('pausing the background retains loaded pixels, does not restart on display,
   const s = source(31); s.stream.loaded[15] = 1; s.scalarData[15] = 73;
   request.mockImplementation((_, { signal }) => new Promise((resolve, reject) => signal.addEventListener('abort', () => reject(new DOMException('Cancelled', 'AbortError')), { once: true })));
   startBackground(s, 15); const fill = s.stream.backgroundCompletion;
-  await new Promise(resolve => setTimeout(resolve, 10)); expect(request.mock.calls).toHaveLength(2);
+  await new Promise(resolve => setTimeout(resolve, 150)); expect(request.mock.calls).toHaveLength(3);
   pauseComplete(s); await fill; await new Promise(resolve => setTimeout(resolve, 10));
   expect(s.stream.queue.jobs.size).toBe(0); expect(s.stream.loaded[15]).toBe(1); expect(s.scalarData[15]).toBe(73); expect(s.stream.errors.size).toBe(0);
-  startBackground(s, 25); expect(request.mock.calls).toHaveLength(2);
+  startBackground(s, 25); expect(request.mock.calls).toHaveLength(3);
   request.mockImplementation(async path => response(Number(path.split('/').at(-1))));
   await requestComplete(s); expect(s.stream.loaded.every(Boolean)).toBe(true); expect(s.scalarData[15]).toBe(73); s.stream.dispose();
 });
@@ -122,8 +122,25 @@ test('releasing a source cancels background requests and the decoder without pop
   const s = source(31); s.stream.loaded[15] = 1; s.scalarData[15] = 73;
   request.mockImplementation((_, { signal }) => new Promise((resolve, reject) => signal.addEventListener('abort', () => reject(new DOMException('Cancelled', 'AbortError')), { once: true })));
   startBackground(s, 15); const fill = s.stream.backgroundCompletion;
-  await new Promise(resolve => setTimeout(resolve, 10)); s.stream.dispose(); await fill;
+  await new Promise(resolve => setTimeout(resolve, 150)); s.stream.dispose(); await fill;
   await new Promise(resolve => setTimeout(resolve, 10));
   expect(s.stream.queue.jobs.size).toBe(0); expect(s.stream.queue.active).toBe(0);
   expect(s.scalarData[15]).toBe(73); expect(s.stream.loaded[14]).toBe(0); expect(s.stream.decoder.dispose).toHaveBeenCalledTimes(1);
+});
+
+
+test('navigation supersedes the opening center while preserving the whole-volume subscription', async () => {
+  const s = source(31); s.stream.loaded[15] = 1; s.scalarData[15] = 73;
+  request.mockImplementation(async path => response(Number(path.split('/').at(-1))));
+  startBackground(s, 15); const fill = s.stream.backgroundCompletion;
+  navigateSlice(s, 25);
+  expect(s.stream.backgroundCompletion).toBe(fill);
+  expect(s.stream.backgroundOrigin).toBe(25);
+  // A late displayed-image notification must not restore the old origin.
+  startBackground(s, 15);
+  await fill;
+  expect(request.mock.calls.slice(0, 5).map(([path]) => Number(path.split('/').at(-1)))).toEqual([25,26,24,27,23]);
+  expect(s.stream.loaded.every(Boolean)).toBe(true);
+  expect(s.scalarData[15]).toBe(73);
+  s.stream.dispose();
 });

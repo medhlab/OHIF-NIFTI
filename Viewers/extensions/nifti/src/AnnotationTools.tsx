@@ -89,6 +89,9 @@ export default function AnnotationTools({
   const collapsed = !expanded;
   const setCollapsed = value =>
     onExpandedChange(!(typeof value === 'function' ? value(collapsed) : value));
+  useEffect(() => {
+    if (!editing && expanded) onExpandedChange(false);
+  }, [editing, expanded, onExpandedChange]);
   const bodyId = `annotation-tools-${sourceKey || 'pending'}`;
   const [, refresh] = useState(0);
   const [pending, setPending] = useState(false);
@@ -303,38 +306,39 @@ export default function AnnotationTools({
             </div>
           );
         })}
+        <Tooltip disableHoverableContent>
+          <TooltipTrigger asChild>
+            <span>
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon"
+                className="at-heading h-10 w-10"
+                aria-label="标注设置与提示管理"
+                disabled={!editing || anatomyReadOnly}
+                aria-expanded={editing && !collapsed}
+                aria-controls={bodyId}
+                onClick={() => setCollapsed(value => !value)}
+              >
+                {pending ? (
+                  <Loader2
+                    size={23}
+                    className="animate-spin"
+                  />
+                ) : (
+                  <Settings2 size={23} />
+                )}
+              </Button>
+            </span>
+          </TooltipTrigger>
+          <TooltipContent side="bottom">标注设置与提示管理</TooltipContent>
+        </Tooltip>
       </div>
-      <Tooltip disableHoverableContent>
-        <TooltipTrigger asChild>
-          <span>
-            <Button
-              type="button"
-              variant="ghost"
-              size="icon"
-              className="at-heading h-10 w-10"
-              aria-label="标注设置与提示管理"
-              aria-expanded={!collapsed}
-              aria-controls={bodyId}
-              onClick={() => setCollapsed(value => !value)}
-            >
-              {pending ? (
-                <Loader2
-                  size={23}
-                  className="animate-spin"
-                />
-              ) : (
-                <Settings2 size={23} />
-              )}
-            </Button>
-          </span>
-        </TooltipTrigger>
-        <TooltipContent side="bottom">标注设置与提示管理</TooltipContent>
-      </Tooltip>
       {createPortal(
         <section className="annotation-tools nt-overlay">
           <div
             id={bodyId}
-            hidden={collapsed}
+            hidden={!editing || collapsed}
             className="at-body nt-popover"
             role="region"
             aria-label="顶部标注工具设置"

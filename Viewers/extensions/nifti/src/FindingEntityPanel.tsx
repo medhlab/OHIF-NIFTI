@@ -1,3 +1,4 @@
+import { maskId, maskIndex, removeMask } from './packedMasks';
 import { entitiesForFinding, entityLabel } from './entityLabels.mjs';
 import React, { useEffect, useRef, useState } from 'react';
 import { useSystem } from '@ohif/core';
@@ -169,7 +170,7 @@ export default function FindingEntityPanel() {
       mask = [...target.masks.values()].find((m: any) => m.saved?.maskId === entity.maskId);
     }
     if (!mask) {
-      const id = await createMask(servicesManager, entity.name);
+      const id = await createMask(servicesManager, entity.name, undefined, undefined, undefined, undefined, entity.id);
       mask = target.masks.get(id);
       mask.entityId = entity.id;
     }
@@ -181,10 +182,10 @@ export default function FindingEntityPanel() {
       viewportId,
       mask.segmentationId
     );
-    servicesManager.services.segmentationService.setActiveSegment(mask.segmentationId, 1);
+    servicesManager.services.segmentationService.setActiveSegment(mask.segmentationId, maskIndex(mask));
     window.dispatchEvent(
       new CustomEvent('nifti:select-target', {
-        detail: { sourceKey: target.sourceKey, segmentationId: mask.segmentationId },
+        detail: { sourceKey: target.sourceKey, segmentationId: maskId(mask) },
       })
     );
     enterMaskEditing(servicesManager, commandsManager, mask);
@@ -232,8 +233,7 @@ export default function FindingEntityPanel() {
           .map(m => m.uid);
         if (ids.length) measurementService.removeMany(ids);
         if (editingMask(target) === mask) exitMaskEditing(servicesManager);
-        segmentationService.remove(mask.segmentationId);
-        target.masks.delete(mask.segmentationId);
+        removeMask(servicesManager, target, mask);
       }
     });
   const addEntity = (findingId, observationId?) =>

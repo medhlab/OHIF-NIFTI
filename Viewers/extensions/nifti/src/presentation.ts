@@ -1,3 +1,4 @@
+import { maskId, bindings } from './packedMasks';
 import { groupedMasks, groupPresentation } from './groups';
 
 // View-only state: never part of voxel revisions or server mask provenance.
@@ -38,13 +39,12 @@ export function createPresentationController(service, source, onError, frames = 
 }) {
   let frame, flashing;
   const paint = (group, mask, pulse = 0) => {
-    if (!source.masks.has(mask.segmentationId)) return;
+    if (!source.masks.has(maskId(mask))) return;
     const state = groupPresentation(source, group.id);
-    for (const viewportId of service.getViewportIdsWithSegmentation(mask.segmentationId)) {
+    for (const binding of bindings(mask)) for (const viewportId of service.getViewportIdsWithSegmentation(binding.segmentationId)) {
       const type = 'Labelmap';
-      service.setSegmentVisibility(viewportId, mask.segmentationId, 1, state.visible && mask.visible !== false, type);
-      // Use the same viewport scope as normal appearance, and schedule a render.
-      service.setStyle({ viewportId, segmentationId: mask.segmentationId, type },
+      service.setSegmentVisibility(viewportId, binding.segmentationId, binding.segmentIndex, state.visible && mask.visible !== false && binding.segmentationId === mask.segmentationId, type);
+      service.setStyle({ viewportId, segmentationId: binding.segmentationId, segmentIndex: binding.segmentIndex, type },
         targetStyle(state, targetPresentation(mask), pulse, scenePresentation(source).otherOpacity));
     }
   };
@@ -68,7 +68,7 @@ export function createPresentationController(service, source, onError, frames = 
         try {
           start ??= timestamp;
           const progress = Math.min((timestamp - start) / 850, 1);
-          if (progress >= 1 || !source.masks.has(mask.segmentationId)) { stop(); return; }
+          if (progress >= 1 || !source.masks.has(maskId(mask))) { stop(); return; }
           paint(group, mask, Math.sin(Math.PI * progress) ** 2);
           frame = frames.request(animate);
         } catch (error) { stop(); onError(error.message); }

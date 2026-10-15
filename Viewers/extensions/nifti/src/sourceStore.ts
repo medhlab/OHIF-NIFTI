@@ -5,7 +5,7 @@ import { transformPoint } from './format.mjs';
 import { parseInWorker } from './workerClient';
 import { niftiMemoryLedger } from '../../default/src/utils/niftiMemoryLedger';
 import type { SourceDescriptor } from './types';
-import { createStream, ensureSlice, ensureComplete, startBackground } from './streaming';
+import { createStream, ensureSlice, ensureComplete, startBackground, navigateSlice } from './streaming';
 import { scalarTypes, dtypeName } from './frameCodec.mjs';
 import { releaseBrushPreview } from './releaseBrushPreview.mjs';
 
@@ -42,6 +42,11 @@ export function memorySnapshot() {
     sourceReleasedButReachableBytes: sourceMemory?.releasedButReachableBytes || 0 };
 }
 
+export function navigateNifti(imageId) {
+  const entry = metadata.get(imageId);
+  if (entry) navigateSlice(sources.get(entry.sourceKey), entry.slice);
+}
+
 export function registerNifti(appConfig) {
   config = appConfig;
   metaData.addProvider((type, imageId) => metadata.get(imageId)?.[type], 10000);
@@ -65,11 +70,24 @@ export function registerNifti(appConfig) {
       // Drive the window from the displayed image, including cached slices.
       // A stale loader response or a thumbnail must not move the window.
       niftiOnDisplayed: () => {
+        source.viewportDisplayed = true;
+        if (source.stream?.loaded.every(Boolean)) void import('./casePrefetch').then(m => m.startCasePrefetch(source));
         if (source.stream && !source.stream.disposed && !source.stream.completing && !source.stream.loaded.every(Boolean)) {
-          source.stream.queue.prefetch(entry.slice);
           startBackground(source, entry.slice);
         }
       },
+      niftiIsImageLoaded: imageId => {
+        const target = metadata.get(imageId);
+        if (!target || target.sourceKey !== source.sourceKey) return undefined;
+        return !source.stream || Boolean(source.stream.loaded[target.slice]);
+      },
+      niftiLoadingProgress: () => ({
+        loaded: source.stream ? source.stream.loaded.reduce((a, b) => a + b, 0) : d.dimensions[2],
+        total: d.dimensions[2],
+        failed: source.stream?.errors.size || 0,
+        prefetchState: source.prefetch?.state,
+        prefetchCases: source.prefetch?.cases.length || 0,
+      }),
       imageQualityStatus: Enums.ImageQualityStatus.FULL_RESOLUTION,
       color: false, rgba: false, numberOfComponents: 1, invert: false,
       slope: 1, intercept: 0, preScale: { scaled: true, scalingParameters: { rescaleSlope: 1, rescaleIntercept: 0 } },
@@ -221,13 +239,17 @@ export function releaseSource(key: string) {
     releaseBrushPreview((BrushTool as any).previewData, key);
     // Cornerstone may create additional volumes from these images when materializing
     // labelmaps/MPR. Those are not necessarily created by our native volume loader.
-    const ownedImages = new Set([...source.imageIds, ...[...source.masks.values()].flatMap((m: any) => m.imageIds || [])]);
+    const ownedImages = new Set([...source.imageIds, ...[...source.masks.values()].flatMap((m: any) => m.imageIds || []), ...[...(source.findingVolumes?.values() || [])].flatMap((v: any) => v.imageIds)]);
     for (const volume of cache.getVolumes()) {
       if (volume && (source.volumeIds.has(volume.volumeId) || volume.imageIds?.some(id => ownedImages.has(id)))) {
         cache.removeVolumeLoadObject(volume.volumeId);
       }
     }
     for (const id of source.volumeIds) if (cache.getVolumeLoadObject(id)) cache.removeVolumeLoadObject(id);
+    for (const volume of source.findingVolumes?.values() || []) {
+      for (const id of volume.imageIds) if (cache.getImageLoadObject(id)) cache.removeImageLoadObject(id, { force: true });
+    }
+    source.findingVolumes?.clear();
     for (const mask of source.masks.values()) {
       for (const id of mask.imageIds || []) if (cache.getImageLoadObject(id)) cache.removeImageLoadObject(id, { force: true });
     }

@@ -1,3 +1,4 @@
+import { maskId } from './packedMasks';
 import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useSystem } from '@ohif/core';
@@ -253,7 +254,7 @@ export default function CaseFilesPanel() {
                             {masks.length ? (
                               masks.map(m => (
                                 <button
-                                  key={m.segmentationId}
+                                  key={maskId(m)}
                                   onClick={() => select(finding, m)}
                                 >
                                   <Circle

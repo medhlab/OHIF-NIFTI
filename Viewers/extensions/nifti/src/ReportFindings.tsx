@@ -104,7 +104,14 @@ export default function ReportFindings({
       setExpandedFindingId(observation.findingId);
     if (observation.evidenceIds[0]) focus(observation.evidenceIds[0], observation.findingId);
   };
-  const selectFinding = finding => {
+  const selectFinding = (finding, locate = true) => {
+    if (busy) return;
+    if (locate && expandedFindingId !== finding.id) {
+      const firstLink = context.links.find(link => link.findingId === finding.id);
+      const entity = firstLink && context.entities.find(e => e.id === firstLink.entityId);
+      setSelectedEntityId(entity?.id || '');
+      if (entity && !isEntityEmpty(entity)) onLocateEntity(entity);
+    }
     setFindingsOpen(true);
     onSelectFinding(finding.id);
     setSelectedObservation('');
@@ -517,7 +524,7 @@ export default function ReportFindings({
                   title="新增 Entity 并绘制"
                   disabled={busy}
                   onClick={() => {
-                    selectFinding(finding);
+                    selectFinding(finding, false);
                     onAddEntity(finding.id, selected?.findingId === finding.id && selected.assertion !== 'negated' ? selected.id : undefined);
                   }}
                 >

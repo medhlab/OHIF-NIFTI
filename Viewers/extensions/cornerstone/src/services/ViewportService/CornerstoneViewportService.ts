@@ -1,7 +1,9 @@
+import { installNiftiViewportGuard } from './niftiViewportGuard.mjs';
 import { PubSubService } from '@ohif/core';
 import { Types as OhifTypes } from '@ohif/core';
 import {
   RenderingEngine,
+  getEnabledElement,
   StackViewport,
   Types,
   getRenderingEngine,
@@ -660,22 +662,13 @@ class CornerstoneViewportService extends PubSubService implements IViewportServi
         ? Math.floor(imageIds.length / 2) : this._getInitialImageIndexForViewport(viewportInfo, imageIds) || 0;
     }
 
-    if (imageIds[0]?.startsWith('nifti:') && !(viewport.element as any).__niftiInputGuard) {
-      viewport.element.addEventListener(csEnums.Events.STACK_NEW_IMAGE, () => {
-        const image = viewport.getCornerstoneImage?.();
-        if (image?.imageId === viewport.getCurrentImageId()) (image as any).niftiOnDisplayed?.();
-      });
-      const guard = event => {
-        const actual = viewport.getCornerstoneImage?.()?.imageId;
-        if (actual !== viewport.getCurrentImageId()) { event.preventDefault(); event.stopImmediatePropagation(); }
-      };
-      viewport.element.addEventListener('mousedown', guard, true);
-      viewport.element.addEventListener('pointerdown', guard, true);
-      viewport.element.addEventListener('touchstart', guard, true);
-      (viewport.element as any).__niftiInputGuard = true;
+    if (imageIds[0]?.startsWith('nifti:')) {
+      installNiftiViewportGuard(viewport.element, element => getEnabledElement(element)?.viewport, csEnums.Events.STACK_NEW_IMAGE);
     }
 
     return viewport.setStack(imageIdsToSet, initialImageIndexToUse).then(() => {
+      const image = viewport.getCornerstoneImage?.();
+      if (image?.imageId === viewport.getCurrentImageId()) (image as any).niftiOnDisplayed?.();
       viewport.setProperties({ ...properties });
       this.setPresentations(viewport.id, presentations, viewportInfo);
 

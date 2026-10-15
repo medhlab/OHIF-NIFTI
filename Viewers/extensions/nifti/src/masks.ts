@@ -1,3 +1,4 @@
+import { maskId, maskIndex, activeMask, bindings, findingKeys, allocateFinding, writeBinary, synchronizeEntity, removeMask } from './packedMasks';
 import { encodeMask, uploadForm } from './maskTransport.mjs';
 import { annotationErrorMessage } from './annotationMessages';
 import { cache, eventTarget } from '@cornerstonejs/core';
@@ -8,7 +9,7 @@ import { parseInWorker, alignInWorker } from './workerClient';
 import { ensureStored, request, upload, downloadMask, apiRoot } from './api';
 import { transformPoint } from './format.mjs';
 import { initialMaskColor, validColor } from './maskColors.mjs';
-import { annotationRoot, annotationRequest, installAnnotationContext } from './annotationClient';
+import { annotationRoot, annotationRequest, installAnnotationContext, registerAnnotationCase } from './annotationClient';
 import { newGroup, importGroup, maskGroup, targetName } from './groups';
 
 export function currentSource(servicesManager) {
@@ -22,14 +23,14 @@ export function currentSource(servicesManager) {
   return { source, ds, viewportId: activeViewportId };
 }
 
-function sliceHashes(ids: string[], previous?: number[], modified?: number[]) {
+function sliceHashes(ids: string[], previous?: number[], modified?: number[], segmentIndex = 1) {
   const result = previous?.length === ids.length ? [...previous] : [];
   const indices = result.length && modified?.length ? modified : ids.map((_, i) => i);
   for (const index of indices) {
     if (!Number.isInteger(index) || index < 0 || index >= ids.length) continue;
     let hash = 2166136261;
     for (const value of cache.getImage(ids[index]).voxelManager.getScalarData())
-      hash = Math.imul(hash ^ value, 16777619) >>> 0;
+      hash = Math.imul(hash ^ (value === segmentIndex ? 1 : 0), 16777619) >>> 0;
     result[index] = hash;
   }
   return result;
@@ -51,15 +52,14 @@ export async function createMask(
   pixels?: Uint8Array,
   saved?,
   signal?,
-  group?
+  group?,
+  entityId = saved?.entityId
 ) {
   const { source, ds, viewportId } = currentSource(servicesManager);
   assertActive(servicesManager, source, signal);
   if (!config.enableNiftiEditing) throw new Error('NIfTI 编辑尚未启用。');
   const { segmentationService } = servicesManager.services;
-  const active = source.masks.get(
-    segmentationService.getActiveSegmentation(viewportId)?.segmentationId
-  );
+  const active = activeMask(source, segmentationService.getActiveSegmentation(viewportId)?.segmentationId);
   const selectedGroup =
     group || saved?.segmentationSet || (active && maskGroup(source, active)) || newGroup();
   // UI group views also contain masks and presentation state; persist only identity metadata.
@@ -69,57 +69,33 @@ export async function createMask(
     kind: selectedGroup.kind,
     ...(selectedGroup.sourceFile ? { sourceFile: selectedGroup.sourceFile } : {}),
   };
-  const id = `${source.sourceKey}:mask:${crypto.randomUUID()}`;
-  reserve(id, source.descriptor.count);
+  const id = `${source.sourceKey}:entity:${crypto.randomUUID()}`;
+  const targets = [];
   try {
-    await segmentationService.createLabelmapForDisplaySet(ds, {
-      segmentationId: id,
-      label,
-      segments: {
-        1: { label, active: true, cachedStats: { sourceType: 'native-nifti', isDirty: !saved } },
-      },
-    });
-    assertActive(servicesManager, source, signal);
-    const seg = segmentation.state.getSegmentation(id);
-    if (pixels) {
-      let offset = 0;
-      for (const imageId of seg.representationData.Labelmap.imageIds) {
-        const target = cache.getImage(imageId).voxelManager.getScalarData();
-        target.set(pixels.subarray(offset, offset + target.length));
-        offset += target.length;
-      }
+    for (const key of findingKeys(source, entityId, id)) {
+      targets.push(await allocateFinding(source, ds, segmentationService, key, label, entityId));
     }
-    await segmentationService.addSegmentationRepresentation(viewportId, {
-      segmentationId: id,
-      type: Enums.SegmentationRepresentations.Labelmap,
-    });
     assertActive(servicesManager, source, signal);
-    const displayColor = validColor(saved?.displayColor)
-      ? saved.displayColor
-      : initialMaskColor(
-          `${source.descriptor.contentHash}:${saved?.maskId || label}`,
-          [...source.masks.values()].map(mask => mask.displayColor)
-        );
-    segmentationService.setSegmentColor(viewportId, id, 1, displayColor);
-    segmentationService.setActiveSegmentation(viewportId, id);
-    segmentationService.setActiveSegment(id, 1);
+    if (pixels) writeBinary(targets, pixels);
+    const displayColor = validColor(saved?.displayColor) ? saved.displayColor
+      : initialMaskColor(`${source.descriptor.contentHash}:${saved?.maskId || label}`, [...source.masks.values()].map(m => m.displayColor));
+    for (const target of targets) {
+      if (!segmentationService.getViewportIdsWithSegmentation(target.segmentationId).includes(viewportId))
+        await segmentationService.addSegmentationRepresentation(viewportId, { segmentationId: target.segmentationId, type: Enums.SegmentationRepresentations.Labelmap });
+      segmentationService.setSegmentColor(viewportId, target.segmentationId, target.segmentIndex, displayColor);
+    }
+    const primary = targets[0];
     source.masks.set(id, {
-      segmentationId: id,
-      label,
-      saved,
-      segmentationSet,
-      displayColor,
-      revision: 0,
-      savedRevision: saved ? 0 : -1,
-      generation: 0,
-      imageIds: [...seg.representationData.Labelmap.imageIds],
-      hashes: sliceHashes(seg.representationData.Labelmap.imageIds),
+      id, ...primary, bindings: targets, entityId, label, saved, segmentationSet, displayColor,
+      revision: 0, savedRevision: saved ? 0 : -1, generation: 0,
+      hashes: sliceHashes(primary.imageIds, undefined, undefined, primary.segmentIndex),
     });
-    triggerSegmentationDataModified(id);
+    segmentationService.setActiveSegmentation(viewportId, primary.segmentationId);
+    segmentationService.setActiveSegment(primary.segmentationId, primary.segmentIndex);
+    for (const target of targets) triggerSegmentationDataModified(target.segmentationId);
     return id;
   } catch (error) {
-    segmentationService.remove(id);
-    release(id);
+    if (targets.length) removeMask(servicesManager, source, { id, ...targets[0], bindings: targets });
     throw error;
   }
 }
@@ -130,7 +106,7 @@ export function maskAppearance(servicesManager, mask) {
     const color = servicesManager.services.segmentationService.getSegmentColor(
       viewportId,
       mask.segmentationId,
-      1
+      maskIndex(mask)
     );
     if (validColor(color)) return [...color];
   } catch {
@@ -150,7 +126,8 @@ export function isMaskDirty(servicesManager, mask) {
 }
 
 export function readMask(source, id): Uint8Array {
-  const seg = segmentation.state.getSegmentation(id);
+  const mask = source.masks.get(id);
+  const seg = segmentation.state.getSegmentation(mask?.segmentationId || id);
   const ids = seg?.representationData?.Labelmap?.imageIds;
   if (!ids?.length) throw new Error('Mask 缓存不完整。');
   const pixels = new Uint8Array(source.descriptor.count);
@@ -163,7 +140,7 @@ export function readMask(source, id): Uint8Array {
     )
       throw new Error('Mask 与原图切片顺序不一致。');
     const slice = image.voxelManager.getScalarData();
-    for (let j = 0; j < slice.length; j++) pixels[offset++] = slice[j] === 1 ? 1 : 0;
+    for (let j = 0; j < slice.length; j++) pixels[offset++] = slice[j] === maskIndex(mask || {}) ? 1 : 0;
   }
   if (offset !== pixels.length) throw new Error('Mask 尺寸不一致。');
   return pixels;
@@ -172,45 +149,35 @@ export function readMask(source, id): Uint8Array {
 export function attachMaskEvents() {
   eventTarget.addEventListener(Enums.Events.SEGMENTATION_MODIFIED, (event: any) => {
     const seg = segmentation.state.getSegmentation(event.detail.segmentationId);
-    for (const source of sources.values()) {
-      const mask = source.masks.get(event.detail.segmentationId);
-      const next = seg?.segments?.[1]?.label;
-      if (mask && next && mask.label !== next) {
-        mask.label = next;
-        mask.revision++;
-      }
-    }
-  });
-  eventTarget.addEventListener(Enums.Events.SEGMENTATION_ADDED, (event: any) => {
-    const seg = segmentation.state.getSegmentation(event.detail.segmentationId);
-    const refs = seg?.representationData?.Labelmap?.referencedImageIds;
-    const source = [...sources.values()].find(s => refs?.length && refs[0] === s.imageIds[0]);
-    if (source && !source.masks.has(seg.segmentationId)) {
-      source.masks.set(seg.segmentationId, {
-        segmentationId: seg.segmentationId,
-        label: seg.label || 'Mask',
-        revision: 0,
-        savedRevision: -1,
-        imageIds: [...seg.representationData.Labelmap.imageIds],
-      });
+    for (const source of sources.values()) for (const mask of source.masks.values()) {
+      if (mask.segmentationId !== event.detail.segmentationId) continue;
+      const next = seg?.segments?.[maskIndex(mask)]?.label;
+      if (next && mask.label !== next) { mask.label = next; mask.revision++; }
     }
   });
   eventTarget.addEventListener(Enums.Events.SEGMENTATION_DATA_MODIFIED, (event: any) => {
     for (const source of sources.values()) {
-      const mask = source.masks.get(event.detail.segmentationId);
-      if (mask) {
-        const hashes = sliceHashes(mask.imageIds, mask.hashes, event.detail.modifiedSlicesToUse);
-        if (!mask.hashes || hashes.some((h, i) => h !== mask.hashes[i])) mask.revision++;
-        mask.hashes = hashes;
-      }
+      if (source.syncingPacked) continue;
+      source.syncingPacked = true;
+      try {
+        const affected = [...source.masks.values()].filter((m: any) => bindings(m).some(b => b.segmentationId === event.detail.segmentationId));
+        for (const mask of affected as any[]) {
+          synchronizeEntity(mask, event.detail.segmentationId);
+          const hashes = sliceHashes(mask.imageIds, mask.hashes, event.detail.modifiedSlicesToUse, maskIndex(mask));
+          if (!mask.hashes || hashes.some((h, i) => h !== mask.hashes[i])) mask.revision++;
+          mask.hashes = hashes;
+          for (const b of bindings(mask)) if (b.segmentationId !== event.detail.segmentationId) triggerSegmentationDataModified(b.segmentationId);
+        }
+      } finally { source.syncingPacked = false; }
     }
   });
   eventTarget.addEventListener(Enums.Events.SEGMENTATION_REMOVED, (event: any) => {
     for (const source of sources.values()) {
-      const mask = source.masks.get(event.detail.segmentationId);
-      source.masks.delete(event.detail.segmentationId);
-      for (const id of mask?.imageIds || [])
-        if (cache.getImageLoadObject(id)) cache.removeImageLoadObject(id, { force: true });
+      for (const [key, volume] of source.findingVolumes || []) if (volume.segmentationId === event.detail.segmentationId) {
+        for (const imageId of volume.imageIds) if (cache.getImageLoadObject(imageId)) cache.removeImageLoadObject(imageId, { force: true });
+        source.findingVolumes.delete(key);
+      }
+      for (const [id, mask] of source.masks) if (bindings(mask).some(b => b.segmentationId === event.detail.segmentationId)) source.masks.delete(id);
     }
     release(event.detail.segmentationId);
   });
@@ -320,14 +287,14 @@ export async function importMasks(
       mask.annotationCaseId = saved?.annotationCaseId;
       if (saved?.anatomyReadOnly) {
         mask.anatomyReadOnly = true;
-        servicesManager.services.segmentationService.setSegmentLocked(id, 1, true);
+        servicesManager.services.segmentationService.setSegmentLocked(mask.segmentationId, maskIndex(mask), true);
       }
       if (saved) mask.savedRevision = mask.revision;
       created.push(id);
     }
     return created;
   } catch (error) {
-    for (const id of created) servicesManager.services.segmentationService.remove(id);
+    for (const id of created) { const mask = source.masks.get(id); if (mask) removeMask(servicesManager, source, mask); }
     throw error;
   } finally {
     release(owner);
@@ -482,6 +449,7 @@ export async function loadSaved(servicesManager, signal?, maskIds?: string[], op
     options.items ||
     (await (await request(`/${source.descriptor.sourceId}/masks`, { signal })).json()).items;
   assertActive(servicesManager, source, signal);
+  if (!source.annotationCase && all.some(item => item.entityId)) await registerAnnotationCase(source, signal);
   const allowed = source.annotationCase
     ? new Set([
         ...source.annotationCase.entities.map(e => e.maskId).filter(Boolean),
@@ -611,7 +579,7 @@ export async function copyGroup(servicesManager, groupId, signal?) {
     try {
       assertActive(servicesManager, source, signal);
       reserve(owner, source.descriptor.count);
-      const pixels = readMask(source, original.segmentationId);
+      const pixels = readMask(source, maskId(original));
       const id = await createMask(
         servicesManager,
         targetName(original),
@@ -632,7 +600,7 @@ export async function copyGroup(servicesManager, groupId, signal?) {
       created.push(id);
     } catch (error) {
       // A partial scheme would look complete. Roll back this explicit copy only.
-      for (const id of created) servicesManager.services.segmentationService.remove(id);
+      for (const id of created) { const mask = source.masks.get(id); if (mask) removeMask(servicesManager, source, mask); }
       if (originalActive && sources.get(source.sourceKey) === source) {
         try {
           servicesManager.services.segmentationService.setActiveSegmentation(

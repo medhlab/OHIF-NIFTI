@@ -61,6 +61,9 @@ export default function ImageInfoPanel() {
         ? `${source.stream.loaded.reduce((a, b) => a + b, 0)} / ${source.stream.loaded.length} 层`
         : '完整加载',
     ],
+    ['标签体积', `${source.findingVolumes?.size || 0} 个 · ${number((source.findingVolumes?.size || 0) * d.count / 1024 ** 2)} MiB · ${source.masks.size} 个 Entity/目标`],
+    ['预取缓存命中', `${source.stream?.diskHits || 0} 层`],
+    ['后续病例预加载', source.prefetch ? `${({ loading: '加载中', complete: '已完成', capacity: '已达容量上限', unavailable: '浏览器缓存不可用', cancelled: '已取消', failed: '暂不可用' })[source.prefetch.state]} · ${source.prefetch.cases.length} 例 · ${number(source.prefetch.bytes / 1024 ** 2)} MiB` : '等待当前图像加载完成'],
     ['原图 ID', d.sourceId || '本地未保存'],
     ['内容标识', d.contentHash],
   ];

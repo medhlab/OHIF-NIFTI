@@ -1,3 +1,4 @@
+import { cancelCasePrefetch } from './casePrefetch';
 import React, { useEffect, useRef, useState } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { Header, Dialog, DialogContent, DialogTitle, DialogDescription } from '@ohif/ui-next';
@@ -6,6 +7,7 @@ import { config, openLocal, openStreaming, releaseSource, sources } from './sour
 import { prepareStreaming } from './streaming';
 import { request, downloadSource, upload, openManifestCase } from './api';
 import { annotationRequest } from './annotationClient';
+import DatasetCatalog from './DatasetCatalog';
 import NiftiIcon from './NiftiIcon';
 import { setWorkspace, workspaceQuery } from './workspace';
 
@@ -32,7 +34,7 @@ export default function Gateway() {
     return () => controller.abort();
   }, [manifest?.id]);
 
-  const [view, setView] = useState(query.get('library') === '1' ? 'library' : restoredManifest() ? 'manifest' : 'library');
+  const [view, setView] = useState(query.get('library') === '1' ? 'library' : query.get('manifestId') ? 'manifest' : 'datasets');
   const [unit, setUnit] = useState(() => defaults().unit), [modality, setModality] = useState(() => defaults().modality);
   const [dialog, setDialog] = useState<'local' | 'manifest' | 'settings' | 'help' | null>(null);
   const [notice, setNotice] = useState('');
@@ -61,6 +63,8 @@ export default function Gateway() {
     navigate(`/nifti-viewer/nifti?source=${encodeURIComponent(source.sourceKey)}${stored ? '&sourceId=' + stored.sourceId : ''}${maskIds.length ? '&maskIds=' + maskIds.join(',') : ''}${workspaceQuery()}${annotationQuery(stored?.sourceId)}`);
   };
   const openStored = async (id, signal, maskIds = [], warnings = []) => {
+    for (const source of sources.values()) source.prefetchSuppressed = true;
+    cancelCasePrefetch();
     setStatus('读取服务器原图…');
     const metadata = await (await request(`/${id}/metadata`, { signal })).json();
     if (config.enableNiftiStreaming) {
@@ -76,10 +80,11 @@ export default function Gateway() {
     const { descriptor, file } = await downloadSource(id, signal, p => setStatus(`下载原图 ${Math.round(p * 100)}%`));
     await open(file, descriptor, signal, maskIds, warnings);
   };
-  const openManifest = async (list, row, signal) => {
+  const openManifest = async (list, row, signal, prefetchSelection?) => {
     setStatus('读取原图并校验分割网格…');
     const reply = await openManifestCase({ manifestId: list.id, caseId: row.caseId, image: row.image, segmentations: row.segmentations, base: list.base, unit: list.unit || unit || null, modality: row.modality || list.modality || 'OT' }, signal);
     const updated = reply.manifest || { ...list, items: list.items.map(r => r.caseId === row.caseId ? { ...r, sourceId: reply.descriptor.sourceId } : r) };
+    if (prefetchSelection || list.prefetchSelection) updated.prefetchSelection = prefetchSelection || list.prefetchSelection;
     setManifest(updated); setWorkspace(updated, row.caseId);
     try { sessionStorage.setItem(storageKey, JSON.stringify(updated)); } catch { /* Server copy remains available. */ }
     await openStored(reply.descriptor.sourceId, signal, reply.maskIds, reply.errors.map(e => `${e.file}: ${e.message}`));
@@ -87,6 +92,8 @@ export default function Gateway() {
   useEffect(() => {
     if (query.get('manifestId')) run(async signal => {
       const list = await (await request(`/manifests/${encodeURIComponent(query.get('manifestId'))}`, { signal })).json();
+      const restored = restoredManifest();
+      if (restored?.id === list.id && restored.prefetchSelection) list.prefetchSelection = restored.prefetchSelection;
       setManifest(list); setView('manifest');
       try { sessionStorage.setItem(storageKey, JSON.stringify(list)); } catch { /* Server copy remains available. */ }
       const row = list.items.find(r => r.caseId === query.get('caseId'));
@@ -164,9 +171,19 @@ export default function Gateway() {
     <section className="catalog-content" aria-label="NIfTI 病例">
       {notice && <p role="status" className="catalog-notice">{notice}</p>}
       <div className="catalog-controls">
-        <div className="catalog-tabs" role="tablist" aria-label="病例来源">{[['library', '已保存病例'], ['manifest', '清单病例']].map(([value, label]) => <button key={value} role="tab" aria-selected={view === value} onClick={() => switchView(value)}>{label}</button>)}</div>
-        {view === 'manifest' ? <label className="catalog-search"><Search size={17} /><input aria-label="搜索清单病例" className={field} placeholder="搜索名称或路径" value={search} onChange={e => { setSearch(e.target.value); setPage(0); }} /></label> : <button className={button} aria-label="刷新已保存病例" onClick={() => setRefresh(n => n + 1)}><RefreshCw size={16} />刷新</button>}
+        <div className="catalog-tabs" role="tablist" aria-label="病例来源">{[['datasets', '数据集'], ['library', '已保存病例'], ['manifest', '清单病例']].map(([value, label]) => <button key={value} role="tab" aria-selected={view === value} onClick={() => switchView(value)}>{label}</button>)}</div>
+        {view === 'manifest' ? <label className="catalog-search"><Search size={17} /><input aria-label="搜索清单病例" className={field} placeholder="搜索名称或路径" value={search} onChange={e => { setSearch(e.target.value); setPage(0); }} /></label> : view === 'library' ? <button className={button} aria-label="刷新已保存病例" onClick={() => setRefresh(n => n + 1)}><RefreshCw size={16} />刷新</button> : null}
       </div>
+      {view === 'datasets' ? <>
+        {busy && <p role="status">{status || '打开病例…'}</p>}
+        {error && <p role="alert" className="catalog-error">{error}</p>}
+        <DatasetCatalog busy={busy} onOpen={(row, selection) => run(async signal => {
+          const list = await (await request(`/manifests/${encodeURIComponent(row.manifestId)}`, { signal })).json();
+          const item = list.items.find(i => i.caseId === row.externalCaseId);
+          if (!item) throw Error('清单中不存在该病例。');
+          await openManifest(list, item, signal, selection);
+        })} />
+      </> : <>
       <div className="catalog-context">
         <span><FolderOpen size={15} />{view === 'library' ? '应用保存的原图 · 非文件夹同步' : manifest?.name || '尚未导入清单'}</span>
         {view === 'manifest' && manifest && <span title={hasRelativePaths ? manifest.base : undefined}>{hasRelativePaths ? `路径起点：${manifest.base}` : '服务器绝对路径'}</span>}
@@ -191,6 +208,7 @@ export default function Gateway() {
         {!shown.length && <div className="catalog-empty"><NiftiIcon /><h2>{view === 'manifest' ? manifest ? '没有匹配的病例' : '从一份清单开始' : '还没有已保存病例'}</h2><p>{view === 'manifest' ? manifest ? '试试其他名称或路径。' : '导入 CSV / JSON，将原图、报告、Findings 和分割文件一起带入工作台。' : '打开本地 NIfTI，或导入服务器上的病例清单。'}</p><p>本地打开不会自动上传。</p></div>}
       </div>
       <footer className="catalog-footer"><span>{count} 例{view === 'manifest' && search ? '匹配病例' : ''} · 每页 25 例</span><div className="catalog-paging"><button className={button} aria-label="上一页" disabled={page === 0 || busy} onClick={() => setPage(n => n - 1)}><ChevronLeft size={16} /></button><span>{page + 1} / {Math.max(1, Math.ceil(count / 25))}</span><button className={button} aria-label="下一页" disabled={(page + 1) * 25 >= count || busy} onClick={() => setPage(n => n + 1)}><ChevronRight size={16} /></button></div></footer>
+      </>}
     </section>
   </main>;
 }
