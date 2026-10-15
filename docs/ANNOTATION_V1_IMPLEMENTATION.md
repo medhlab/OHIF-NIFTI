@@ -1,5 +1,7 @@
 # 单 CT Finding / Entity 标注第一版
 
+> 本文保留 2026-10-13 首版接口与验收记录。当前 v0.1.0 已调整工具栏、病例完成、共享入口和 mask 内存组织，操作与功能以 [v0.1.0](V0_1_0.md) 和 [使用指南](NIFTI_USER_GUIDE.md) 为准；下文“允许任意重叠”“无需标注”等首版说明不能作为当前 UI 规则。
+
 更新时间：2026-10-13，Asia/Shanghai。实现仓库 `medhlab/OHIF-NIFTI`，分支 `codex/annotation-v1`，基线 `ca7cf52`。本版已完整构建、完成真实 CT 工程验收并部署到 rtx4500；[部署与验收记录](ANNOTATION_V1_DEPLOYMENT.md)。
 
 ## 范围与入口

@@ -1,5 +1,7 @@
 # nnInteractive selected-mask editing — 2026-08-26
 
+> 本文保留早期 DICOM mask 编辑协议和部署背景；当前原生 NIfTI 的操作请看 [使用指南](docs/NIFTI_USER_GUIDE.md)，功能和验证范围见 [v0.1.0](docs/V0_1_0.md)。
+
 ## Startup regression hotfix (20:58)
 
 The first implementation eagerly subscribed to `segmentationService` while the default extension's command module was being registered. `pluginConfig.json` loads default before cornerstone; Cornerstone only registers segmentation/viewport services in its later preRegistration hook. This reproduced `Cannot read properties of undefined (reading 'subscribe')` and could leave default extension modules unregistered, breaking the worklist.

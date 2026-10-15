@@ -1,5 +1,7 @@
 # OHIF 单 CT 标注数据标准与接口设计
 
+> 设计与演进文档，不是已实现功能清单。当前 [v0.1.0](V0_1_0.md) 中，同一 Finding 内 Entity 不重叠；没有“不需标注 Entity”或“选择共享 Entity”的 UI 入口；自动候选调度/审核不是本版完成范围。旧设计中的独立二值 mask 指服务端版本格式，不代表浏览器逐 Entity 分配体积。
+
 - 文档版本：1.4；契约版本：`annotation/v1`；更新日期：2026-10-13，Asia/Shanghai。
 - 状态：新系统设计基线；人工单 CT 子集已实现，实际路由与字段见 [第一版实现记录](ANNOTATION_V1_IMPLEMENTATION.md)。本文包含后续演进目标。
 - 实现仓库：[medhlab/OHIF-NIFTI](https://github.com/medhlab/OHIF-NIFTI)，源码参考基线 `ca7cf52cf1b049fdf0a5aa70b74d96dc35ebc1a6`。

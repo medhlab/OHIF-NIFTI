@@ -1,5 +1,7 @@
 # Native NIfTI implementation
 
+> 当前功能与验证状态已更新至 [v0.1.0](V0_1_0.md)。下文为原生 NIfTI 阶段实现与历史部署记录，不代表最新界面或实时服务。
+
 > Current checkpoint (2026-10-09): see [local development state](CURRENT_STATE_2026-10-09.md).
 > The vanilla deployment statements below are historical records, not a fresh
 > validation of the server or a deployment of the latest local UI changes.
