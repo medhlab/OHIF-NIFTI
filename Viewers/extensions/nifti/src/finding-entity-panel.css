@@ -464,7 +464,7 @@
 
 .rf-hints > .rf-hint { flex-shrink: 0; white-space: nowrap; overflow-wrap: normal; max-width: none; }
 
-.rf-entity-edit .rf-entity-empty { flex: 0 0 auto; display: inline-flex; align-items: center; }
+.rf-entity-edit .rf-entity-legend { flex: 0 0 14px; width: 14px; height: 14px; box-sizing: border-box; border: 1.5px solid; border-radius: 3px; }
 .rf-entity-edit > strong { flex-shrink: 0; white-space: nowrap; }
 
 /* Fixed workspace regions avoid nested outer scrollbars. */

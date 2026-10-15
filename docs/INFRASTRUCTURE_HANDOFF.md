@@ -455,3 +455,17 @@ Entity行移除编辑中文字，仅铅笔高亮；空mask图标位于编号后�
 当前预览 viewer 为 `ohif-nifti-rtx4500-viewer:concurrency-93d92596dd`，backend 为 `ohif-nifti-rtx4500-backend:datasets-2fd51b77b5`。当前 CT 后台3/总4并发，后续病例2并发，解码worker3；工作预算1.5GiB，压缩帧磁盘缓存512MiB，当前CT完整后预取后续两例。预览部署及回退材料：rtx4500 `/home/ant/projects/OHIF-NIFTI/releases/concurrency-20261015/`；回退使用该目录 `rollback.compose.json`。正式服务未改变。本轮只整理Git，不重启服务或改标注。
 
 43个前端改动文件逐文件匹配最终部署快照，96项前端回归和完整OHIF构建通过（3个已有webpack警告）。真实CT验证缓存切换、加载完后无Loading闪烁；独立病例验证nnInteractive GPU推理、同Finding其他label保留、跨Finding共享Entity同步，以及保存重开导出逐体素哈希一致。验收材料位于同级 `packed-prefetch-20261015/`。单例CT+标签数组从924MiB降至462MiB，不代表浏览器总内存或GPU峰值；未做同条件整例A/B测速。详细数据与阶段记录见 cooperate_space 的三个2026-10-14/15数据集、导入和预加载任务文档。
+
+### 2026-10-15 Entity 颜色图例验收完成
+Entity编号左侧统一14px圆角方形图例，读取实际segment颜色；非空mask同色半透明填充/实线边框，空mask无填充/虚线边框，移除编号后的独立空mask图标。未加载mask暂显示中性实线框并提示“Mask尚未加载”，不为图例额外分配体积。
+完整OHIF构建及96项回归通过（3个已有webpack警告）；独立case fb53299de8564f84996e4b03371c9e5a验证F1-E1青色图例与图像mask相同、新增F1-E3空mask紫色虚线框，位置均在编号左侧。只新增测试Entity，未运行AI或改写已保存mask。
+预览viewer `ohif-nifti-rtx4500-viewer:entity-legend-87bdc8494e`；产物rtx4500 `/home/ant/projects/OHIF-NIFTI/releases/entity-legend-20261015/`（构建、快照、部署及rollback.compose.json）。两个后端及正式viewer容器ID不变；回退concurrency-93d92596dd。应用与记录尚未提交/推送。
+
+### 2026-10-15 Case header acceptance
+Removed image/report entries and separate case-status row. Completion is an icon beside the case name: dashed circle for pending, green check for complete, spinner while submitting. Existing unsaved-mask and backend completion guards remain. Full build and 96 tests passed (3 existing webpack warnings). Real CT fixture verified inline placement, no nested buttons, removed rows, and visible rejection of completion with an empty Entity; status remained pending. Successful completion state was not exercised this round. No masks modified.
+Preview image: `ohif-nifti-rtx4500-viewer:case-header-76b2465222`. Artifacts and rollback: rtx4500 `/home/ant/projects/OHIF-NIFTI/releases/case-header-20261015/`; rollback image entity-legend-87bdc8494e. Both backends and formal viewer unchanged. Code and team records remain uncommitted pending the next requested publication.
+
+### 2026-10-15 Finding batch-load acceptance
+Selecting a Finding now loads all its saved Entity masks before locating the first nonempty Entity. Existing loaded/unsaved masks are reused; empty Entities allocate no new mask. Right-side Finding selection, report evidence selection and left-side Finding events share the loader. Explicit left-side Entity selection retains its own target. Partial failures remain visible and retryable.
+Full OHIF build and 96 regression tests passed (3 existing webpack warnings). Real CT fixture fb53299de8564f84996e4b03371c9e5a: independently tested right and left Finding clicks after reload; each loaded both F1-E1 and F1-E2 without clicking individual Entities, while F1-E3 stayed empty. Both loaded legends became colored, no page errors. No annotation writes or GPU inference.
+Preview image `ohif-nifti-rtx4500-viewer:finding-load-56ba5b0ffe`. Build, snapshot, deployment and rollback at rtx4500 `/home/ant/projects/OHIF-NIFTI/releases/finding-load-20261015/`; rollback case-header-76b2465222. Both backends and formal viewer unchanged. Code and records remain uncommitted pending requested publication.

@@ -44,6 +44,7 @@ export default function ReportFindings({
   onLocateEntity,
   editingEntityId,
   isEntityEmpty,
+  entityColor,
   onDeleteEntity,
   onUnlink,
   onCategory,
@@ -86,10 +87,10 @@ export default function ReportFindings({
   const observations = extraction?.observations || [];
   const selected = observations.find(o => o.id === selectedObservation);
   const byObservation = new Map(observations.map(o => [o.id, o]));
-  const focus = (eid, fid?) => {
+  const focus = (eid, fid?, select = true) => {
     setFocusedId(eid);
     setReportOpen(true);
-    if (fid) onSelectFinding(fid);
+    if (fid && select) onSelectFinding(fid);
     requestAnimationFrame(() =>
       scrollWithin(
         root.current?.querySelector('.rf-source-scroll'),
@@ -110,13 +111,13 @@ export default function ReportFindings({
       const firstLink = context.links.find(link => link.findingId === finding.id);
       const entity = firstLink && context.entities.find(e => e.id === firstLink.entityId);
       setSelectedEntityId(entity?.id || '');
-      if (entity && !isEntityEmpty(entity)) onLocateEntity(entity);
+
     }
     setFindingsOpen(true);
-    onSelectFinding(finding.id);
+    onSelectFinding(finding.id, locate);
     setSelectedObservation('');
     setExpandedFindingId(finding.id);
-    if (finding.evidenceIds[0]) focus(finding.evidenceIds[0], finding.id);
+    if (finding.evidenceIds[0]) focus(finding.evidenceIds[0], finding.id, false);
     requestAnimationFrame(() =>
       scrollWithin(
         root.current?.querySelector('.rf-findings-scroll'),
@@ -187,7 +188,7 @@ export default function ReportFindings({
       <div className="rf-entity-header">
         <EntityName entity={entity} prefix={entityLabel(context, entity.id, link.findingId)}
           selected={selectedEntityId === entity.id || editingEntityId === entity.id}
-          empty={isEntityEmpty(entity)} busy={busy}
+          empty={isEntityEmpty(entity)} color={entityColor(entity)} busy={busy}
           onSelect={() => { setSelectedEntityId(entity.id); if (!isEntityEmpty(entity)) onLocateEntity(entity); }}
           onRename={name => onEntityMetadata(entity.id, { name })} />
         <div
