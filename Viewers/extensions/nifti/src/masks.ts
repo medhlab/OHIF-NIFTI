@@ -1,4 +1,4 @@
-import { maskId, maskIndex, activeMask, bindings, findingKeys, allocateFinding, writeBinary, synchronizeEntity, removeMask } from './packedMasks';
+import { maskId, maskIndex, activeMask, bindings, findingKeys, allocateFinding, writeBinary, synchronizeEntity, removeMask, notifyImportedMask } from './packedMasks';
 import { encodeMask, uploadForm } from './maskTransport.mjs';
 import { annotationErrorMessage } from './annotationMessages';
 import { cache, eventTarget } from '@cornerstonejs/core';
@@ -29,8 +29,9 @@ function sliceHashes(ids: string[], previous?: number[], modified?: number[], se
   for (const index of indices) {
     if (!Number.isInteger(index) || index < 0 || index >= ids.length) continue;
     let hash = 2166136261;
-    for (const value of cache.getImage(ids[index]).voxelManager.getScalarData())
-      hash = Math.imul(hash ^ (value === segmentIndex ? 1 : 0), 16777619) >>> 0;
+    const pixels = cache.getImage(ids[index]).voxelManager.getScalarData();
+    for (let i = 0; i < pixels.length; i++)
+      hash = Math.imul(hash ^ (pixels[i] === segmentIndex ? 1 : 0), 16777619) >>> 0;
     result[index] = hash;
   }
   return result;
@@ -55,6 +56,8 @@ export async function createMask(
   group?,
   entityId = saved?.entityId
 ) {
+  const timing = performance.now();
+  const marks: any = {};
   const { source, ds, viewportId } = currentSource(servicesManager);
   assertActive(servicesManager, source, signal);
   if (!config.enableNiftiEditing) throw new Error('NIfTI 编辑尚未启用。');
@@ -76,7 +79,9 @@ export async function createMask(
       targets.push(await allocateFinding(source, ds, segmentationService, key, label, entityId));
     }
     assertActive(servicesManager, source, signal);
+    marks.allocate = performance.now() - timing;
     if (pixels) writeBinary(targets, pixels);
+    marks.write = performance.now() - timing;
     const displayColor = validColor(saved?.displayColor) ? saved.displayColor
       : initialMaskColor(`${source.descriptor.contentHash}:${saved?.maskId || label}`, [...source.masks.values()].map(m => m.displayColor));
     for (const target of targets) {
@@ -84,6 +89,7 @@ export async function createMask(
         await segmentationService.addSegmentationRepresentation(viewportId, { segmentationId: target.segmentationId, type: Enums.SegmentationRepresentations.Labelmap });
       segmentationService.setSegmentColor(viewportId, target.segmentationId, target.segmentIndex, displayColor);
     }
+    marks.representation = performance.now() - timing;
     const primary = targets[0];
     source.masks.set(id, {
       id, ...primary, bindings: targets, entityId, label, saved, segmentationSet, displayColor,
@@ -92,7 +98,10 @@ export async function createMask(
     });
     segmentationService.setActiveSegmentation(viewportId, primary.segmentationId);
     segmentationService.setActiveSegment(primary.segmentationId, primary.segmentIndex);
-    for (const target of targets) triggerSegmentationDataModified(target.segmentationId);
+    marks.hash = performance.now() - timing;
+    notifyImportedMask(source, targets);
+    marks.events = performance.now() - timing;
+    console.debug("[nifti-mask-create]", JSON.stringify(marks));
     return id;
   } catch (error) {
     if (targets.length) removeMask(servicesManager, source, { id, ...targets[0], bindings: targets });
@@ -236,6 +245,8 @@ export async function importMasks(
   // Header/stream overhead first; worker pauses until its true allocation is approved.
   const overhead = 16 * 1024 ** 2;
   reserve(owner, overhead + file.size);
+  const timing = performance.now();
+  const marks: any = {};
   const created = [];
   const group =
     saved?.segmentationSet || (saved ? newGroup(saved.name, 'legacy') : importGroup(file.name));
@@ -248,16 +259,20 @@ export async function importMasks(
       h => reserve(owner, file.size + h.offset + h.sourceBytes + h.workingBytes + overhead)
     );
     assertActive(servicesManager, source, signal);
+    marks.parse = performance.now() - timing;
     const map = alignedIndexTransform(descriptor, source.descriptor);
     const labels = new Set<number>();
-    for (const value of scalarData)
+    for (let i = 0; i < scalarData.length; i++) {
+      const value = scalarData[i];
       if (value) {
         labels.add(value);
         if (labels.size > 256) throw new Error('每次最多导入 256 个标签。');
       }
+    }
     if (!labels.size && saved?.labelOnly) labels.add(1);
     if (!labels.size) throw new Error('空文件仅能作为明确保存的 label-only 草稿加载。');
     reserve(owner, file.size + scalarData.byteLength + source.descriptor.count * (labels.size + 1));
+    marks.labels = performance.now() - timing;
     for (const label of labels) {
       progress(`对齐标签 ${created.length + 1} / ${labels.size}`);
       const aligned = await alignInWorker(
@@ -269,6 +284,7 @@ export async function importMasks(
         signal
       );
       assertActive(servicesManager, source, signal);
+      marks.align = performance.now() - timing;
       scalarData = aligned.scalarData;
       const binary = aligned.binary;
       const labelName = saved?.name || file.name + (labels.size > 1 ? ` / ${label}` : '');
@@ -292,6 +308,8 @@ export async function importMasks(
       if (saved) mask.savedRevision = mask.revision;
       created.push(id);
     }
+    marks.total = performance.now() - timing;
+    console.debug("[nifti-mask-import]", JSON.stringify(marks));
     return created;
   } catch (error) {
     for (const id of created) { const mask = source.masks.get(id); if (mask) removeMask(servicesManager, source, mask); }
@@ -459,23 +477,28 @@ export async function loadSaved(servicesManager, signal?, maskIds?: string[], op
   const items = all.filter(
     item => (!maskIds || maskIds.includes(item.maskId)) && (!allowed || allowed.has(item.maskId))
   );
+  // Keep the requested Entity order so the first visible target can be located early.
+  if (maskIds) items.sort((a, b) => maskIds.indexOf(a.maskId) - maskIds.indexOf(b.maskId));
   const results = [];
   for (let index = 0; index < items.length; index++) {
     const item = items[index];
     assertActive(servicesManager, source, signal);
     if (!options.asCopy && [...source.masks.values()].some(m => m.saved?.maskId === item.maskId)) {
       results.push({ item, status: 'alreadyLoaded' });
+      await options.onSettled?.(results[results.length - 1]);
       continue;
     }
     const progress = stage =>
       options.progress?.(`${index + 1} / ${items.length} · ${item.name} · ${stage}`);
     try {
+      const timing = performance.now();
       progress('下载中');
       const blob = await downloadMask(
         `/${source.descriptor.sourceId}/masks/${item.maskId}?version=${item.version}`,
         signal,
         progress
       );
+      console.debug("[nifti-mask-download]", JSON.stringify({ ms: performance.now() - timing, bytes: blob.size }));
       assertActive(servicesManager, source, signal);
       if (options.asCopy && item.anatomyReadOnly) throw Error('结构辅助图层不能复制为人工标注。');
       const imported = options.asCopy
@@ -509,6 +532,7 @@ export async function loadSaved(servicesManager, signal?, maskIds?: string[], op
       if (signal?.aborted || error.name === 'AbortError') throw error;
       results.push({ item, status: 'failed', error: error.message });
     }
+    await options.onSettled?.(results[results.length - 1]);
   }
   return results;
 }

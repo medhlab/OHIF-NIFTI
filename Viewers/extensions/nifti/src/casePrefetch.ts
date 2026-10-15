@@ -4,7 +4,7 @@ import { annotationRequest } from './annotationClient';
 import { getWorkspace } from './workspace';
 import { prepareStreaming } from './streaming';
 import { outwardSlices } from './frameQueue.mjs';
-import { keepPrefetchSources, hasPrefetchedFrame, storePrefetchedFrame } from './frameDiskCache';
+import { keepPrefetchSources, preparePrefetchCache, hasPrefetchedFrame, storePrefetchedFrame } from './frameDiskCache';
 let running;
 export function cancelCasePrefetch() { running?.abort(); running = undefined; }
 export async function followingSources(workspace, sourceId, signal) {
@@ -54,12 +54,14 @@ export function startCasePrefetch(source) {
   source.prefetch = { state: 'loading', cases: [], bytes: 0, frames: 0 };
   (async () => {
     const ids = await followingSources(workspace, source.descriptor.sourceId, signal);
-    if (!await keepPrefetchSources(ids)) { source.prefetch.state = 'unavailable'; return; }
+    const epoch = await source.stream.cacheReady;
+    if (!await keepPrefetchSources(ids, epoch)) { source.prefetch.state = 'unavailable'; return; }
     source.prefetch.cases = ids;
     for (const id of ids) {
       signal.throwIfAborted();
       const metadata = await (await request(`/${id}/metadata`, { signal })).json();
       const descriptor = await prepareStreaming(id, metadata, signal, () => {});
+      if (!await preparePrefetchCache(id, descriptor, epoch)) { source.prefetch.state = 'cancelled'; return; }
       const complete = await prefetchFrames(outwardSlices(descriptor.frames.length, Math.floor(descriptor.frames.length / 2)), async (index, signal) => {
         signal.throwIfAborted();
         if (await hasPrefetchedFrame(id, descriptor, index)) return true;
@@ -76,7 +78,7 @@ export function startCasePrefetch(source) {
             chunks.push(value);
           }
         } finally { await reader.cancel().catch(() => {}); reader.releaseLock(); }
-        if (!await storePrefetchedFrame(id, descriptor, index, new Blob(chunks), response.headers, signal)) return false;
+        if (!await storePrefetchedFrame(id, descriptor, index, new Blob(chunks), response.headers, signal, epoch)) return false;
         source.prefetch.bytes += size; source.prefetch.frames++;
         return true;
       }, signal);

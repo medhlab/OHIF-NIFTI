@@ -34,6 +34,7 @@ import { segmentation } from '@cornerstonejs/tools';
 import './annotation-toolbar.css';
 import { currentEditingMask, editingMask, enterMaskEditing, exitMaskEditing } from './editing';
 import SavedMasksDialog from './SavedMasksDialog';
+import ImageCacheAction from './ImageCacheAction';
 import { ensureSlice, requestComplete, pauseComplete } from './streaming';
 
 export default function AnnotationToolbar() {
@@ -344,6 +345,7 @@ export default function AnnotationToolbar() {
         >
           <h3>Mask 与文件</h3>
           <p>{source?.descriptor.name || '等待原图…'}</p>
+          <ImageCacheAction source={source} active={menu === 'files'} />
           <div className="nt-file-actions">
             {source?.stream && (
               <ToolbarIconButton

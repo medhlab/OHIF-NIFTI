@@ -42,8 +42,9 @@ export async function allocateFinding(source, ds, service, key, label, entityId)
 export function writeBinary(targets, pixels) {
   for (const target of targets) {
     let offset = 0;
-    for (const slice of maskSlices(target)) for (const value of slice) {
-      if (pixels[offset++] && value && value !== target.segmentIndex) throw Error('同一 Finding 的 Entity mask 存在重叠，未覆盖已有标注。');
+    for (const slice of maskSlices(target)) for (let i = 0; i < slice.length; i++, offset++) {
+      const value = slice[i];
+      if (pixels[offset] && value && value !== target.segmentIndex) throw Error('同一 Finding 的 Entity mask 存在重叠，未覆盖已有标注。');
     }
   }
   for (const target of targets) {
@@ -54,6 +55,21 @@ export function writeBinary(targets, pixels) {
     }
   }
 }
+/** writeBinary already validates and writes every replica, and createMask installs its
+ * hash baseline. Notify renderers without treating this known import as an edit:
+ * siblings are unchanged, so rescanning/synchronizing them is redundant.
+ * This guard covers only synchronous notification, never an await or user edit.
+ */
+export function notifyImportedMask(source, targets) {
+  const previous = source.syncingPacked;
+  source.syncingPacked = true;
+  try {
+    for (const target of targets) triggerSegmentationDataModified(target.segmentationId);
+  } finally {
+    source.syncingPacked = previous;
+  }
+}
+
 /** Mirror shared Entity edits across Findings, clipping against other Entity labels. */
 export function synchronizeEntity(mask, changedId) {
   const copies = bindings(mask);

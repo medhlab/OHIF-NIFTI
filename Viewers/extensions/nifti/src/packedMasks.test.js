@@ -1,4 +1,5 @@
-import { allocateFinding, writeBinary, synchronizeEntity, findingKeys, removeMask } from './packedMasks';
+import { triggerSegmentationDataModified } from '@cornerstonejs/tools/segmentation/triggerSegmentationEvents';
+import { allocateFinding, writeBinary, synchronizeEntity, findingKeys, removeMask, notifyImportedMask } from './packedMasks';
 import { cache } from '@cornerstonejs/core';
 import { segmentation } from '@cornerstonejs/tools';
 import { reserve } from './sourceStore';
@@ -8,7 +9,7 @@ jest.mock('@cornerstonejs/tools/segmentation/triggerSegmentationEvents', () => (
 jest.mock('./sourceStore', () => ({ reserve: jest.fn(), release: jest.fn() }));
 const arrays = new Map(), segs = new Map();
 beforeEach(() => {
-  jest.clearAllMocks(); arrays.clear(); segs.clear();
+  jest.resetAllMocks(); arrays.clear(); segs.clear();
   let sequence = 0; Object.defineProperty(global, 'crypto', { configurable: true, value: { randomUUID: () => String(++sequence) } });
   cache.getImage.mockImplementation(id => ({ voxelManager: { getScalarData: () => arrays.get(id) } }));
   segmentation.state.getSegmentation.mockImplementation(id => segs.get(id));
@@ -49,4 +50,27 @@ test('removing one Entity clears only its label and keeps siblings volume', asyn
 test('shared Entity has one binding per distinct Finding and unlinked Entities stay independent',()=>{
  const source={annotationCase:{links:[{entityId:'e',findingId:'f1'},{entityId:'e',findingId:'f2'}]}};
  expect(findingKeys(source,'e','x')).toEqual(['f1','f2']);expect(findingKeys(source,'other','x')).toEqual(['x']);
+});
+
+test('import notification reaches renderers but skips edit synchronization only during dispatch', () => {
+ const source = {}, seen = [];
+ triggerSegmentationDataModified.mockImplementation(id => seen.push([id, source.syncingPacked]));
+ notifyImportedMask(source, [{segmentationId:'a'}, {segmentationId:'b'}]);
+ expect(seen).toEqual([['a',true],['b',true]]);
+ expect(source.syncingPacked).toBeUndefined();
+ // Normal editing after the notification must not remain suppressed.
+ triggerSegmentationDataModified('a');
+ expect(seen[2]).toEqual(['a',undefined]);
+});
+test('notification restores nested synchronization guard even if a listener throws', () => {
+ const source = {syncingPacked:true};
+ triggerSegmentationDataModified.mockImplementationOnce(() => {throw Error('listener');});
+ expect(() => notifyImportedMask(source,[{segmentationId:'a'}])).toThrow('listener');
+ expect(source.syncingPacked).toBe(true);
+});
+test('replica conflict fails before modifying any copy', () => {
+ arrays.set('a', Uint8Array.from([1,0,2,0])); arrays.set('b',Uint8Array.from([3,4,0,0]));
+ const targets=[{segmentationId:'a',segmentIndex:1,imageIds:['a']},{segmentationId:'b',segmentIndex:3,imageIds:['b']}];
+ expect(() => writeBinary(targets,Uint8Array.from([0,1,0,0]))).toThrow('重叠');
+ expect([...arrays.get('a')]).toEqual([1,0,2,0]);expect([...arrays.get('b')]).toEqual([3,4,0,0]);
 });

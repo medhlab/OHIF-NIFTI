@@ -329,3 +329,11 @@ body.nifti-case-switching .nt-popover {
 .nt-target span { font-size:11px; }
 .nt-status[hidden] { display:none; }
 .nt-card-actions { gap:3px; }
+
+.nt-image-cache { margin:8px 0 12px; padding-bottom:10px; border-bottom:1px solid #453652; }
+.nt-image-cache-row { display:flex; align-items:center; justify-content:space-between; gap:10px; flex-wrap:wrap; }
+.nt-image-cache-row button { display:inline-flex; align-items:center; gap:6px; padding:5px 8px; border:1px solid #67517e; border-radius:5px; background:#30263d; color:#e4d6f4; }
+.nt-image-cache-row button:hover:not(:disabled) { background:#443153; }
+.nt-image-cache-row button:disabled { opacity:.5; cursor:default; }
+.nt-image-cache-row > span { font-size:12px; color:#bbadcb; white-space:nowrap; font-variant-numeric:tabular-nums; }
+.nt-image-cache > p { margin:6px 0 0; font-size:12px; }

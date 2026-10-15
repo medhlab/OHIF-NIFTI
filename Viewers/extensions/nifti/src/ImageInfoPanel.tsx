@@ -2,10 +2,25 @@ import React, { useEffect, useState } from 'react';
 import { utilities } from '@cornerstonejs/core';
 import { useSystem } from '@ohif/core';
 import { currentSource } from './masks';
+import { imageCacheStats } from './frameDiskCache';
 
 export default function ImageInfoPanel() {
   const { servicesManager } = useSystem();
   const [, refresh] = useState(0);
+  const [disk, setDisk] = useState<any>(null);
+  useEffect(() => {
+    let mounted = true, pending = false;
+    const update = async () => {
+      if (pending) return;
+      pending = true;
+      const stats = await imageCacheStats();
+      if (mounted) setDisk(stats || { unavailable: true });
+      pending = false;
+    };
+    void update();
+    const timer = setInterval(update, 2000);
+    return () => { mounted = false; clearInterval(timer); };
+  }, []);
   useEffect(() => {
     const timer = setInterval(() => refresh(n => n + 1), 500);
     return () => clearInterval(timer);
@@ -62,8 +77,9 @@ export default function ImageInfoPanel() {
         : '完整加载',
     ],
     ['标签体积', `${source.findingVolumes?.size || 0} 个 · ${number((source.findingVolumes?.size || 0) * d.count / 1024 ** 2)} MiB · ${source.masks.size} 个 Entity/目标`],
-    ['预取缓存命中', `${source.stream?.diskHits || 0} 层`],
+    ['本地图像缓存命中', `${source.stream?.diskHits || 0} 层`],
     ['后续病例预加载', source.prefetch ? `${({ loading: '加载中', complete: '已完成', capacity: '已达容量上限', unavailable: '浏览器缓存不可用', cancelled: '已取消', failed: '暂不可用' })[source.prefetch.state]} · ${source.prefetch.cases.length} 例 · ${number(source.prefetch.bytes / 1024 ** 2)} MiB` : '等待当前图像加载完成'],
+    ['本地图像缓存占用', disk ? disk.unavailable ? '浏览器缓存不可用' : `${number(disk.bytes / 1024 ** 2)} / ${number(disk.limit / 1024 ** 2)} MiB · ${disk.cases} 例` : '正在读取…'],
     ['原图 ID', d.sourceId || '本地未保存'],
     ['内容标识', d.contentHash],
   ];

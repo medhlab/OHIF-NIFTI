@@ -1,4 +1,5 @@
-import { takePrefetchedFrame } from './frameDiskCache';
+import { takePrefetchedFrame, beginImageCache, storeImageFrame, discardCachedFrame } from './frameDiskCache';
+import { rememberSlice } from './imagePosition';
 import { FrameQueue, outwardSlices } from './frameQueue.mjs';
 import { scalarTypes, dtypeName } from './frameCodec.mjs';
 import { createFrameDecoder } from './workerClient';
@@ -44,10 +45,12 @@ async function downloadFrame(source, index, signal) {
   const controller = new AbortController();
   const abort = () => controller.abort(signal?.reason); signal.addEventListener('abort', abort, { once: true });
   const timeout = () => controller.abort(new DOMException('切片下载超时，请重试。', 'TimeoutError'));
-  const total = setTimeout(timeout, 180000); let idle = setTimeout(timeout, 60000), reader;
+  const total = setTimeout(timeout, 180000); let idle = setTimeout(timeout, 60000), reader, cached;
   try {
     signal.throwIfAborted();
-    const cached = await takePrefetchedFrame(source.descriptor.sourceId, d, index);
+    const epoch = await source.stream.cacheReady;
+    cached = await takePrefetchedFrame(source.descriptor.sourceId, d, index);
+    controller.signal.throwIfAborted();
     if (cached) source.stream.diskHits = (source.stream.diskHits || 0) + 1;
     const response = cached || await request(`/${source.descriptor.sourceId}/frames/${index}`, { signal: controller.signal, cache: 'no-store' });
     if (response.headers.get('X-Nifti-Cache-Key') !== d.cacheKey || response.headers.get('X-Nifti-Frame') !== String(index)) throw Error('NIfTI frame identity mismatch.');
@@ -61,13 +64,24 @@ async function downloadFrame(source, index, signal) {
       chunks.push(value);
     }
     const networkEnd = performance.now();
-    const pixels = await source.stream.decoder.decode(new Blob(chunks), d, frame, controller.signal);
+    const compressed = new Blob(chunks);
+    const pixels = await source.stream.decoder.decode(compressed, d, frame, controller.signal);
+    const decodeEnd = performance.now();
+    if (source.stream.disposed || signal.aborted) throw new DOMException('Cancelled', 'AbortError');
+    if (!cached) {
+      const stored = await storeImageFrame(source.descriptor.sourceId, d, index, compressed, response.headers, controller.signal, epoch, true);
+      if (!stored) source.stream.cacheLimited = true;
+    }
     if (source.stream.disposed || signal.aborted) throw new DOMException('Cancelled', 'AbortError');
     const offset = index * source.descriptor.dimensions[0] * source.descriptor.dimensions[1];
     source.scalarData.set(pixels, offset);
     source.stream.loaded[index] = 1; source.stream.errors.delete(index);
-    source.stream.timings[index] = { bytes: size, networkMs: Math.round(networkEnd - started), decodeMs: Math.round(performance.now() - networkEnd) };
+    source.stream.timings[index] = { bytes: size, networkMs: Math.round(networkEnd - started), decodeMs: Math.round(decodeEnd - networkEnd) };
   } catch (error) {
+    if (cached && !signal.aborted && !controller.signal.aborted) {
+      await discardCachedFrame(source.descriptor.sourceId, d, index);
+      error.niftiCacheCorrupt = true;
+    }
     if (controller.signal.reason?.name === 'TimeoutError') throw controller.signal.reason;
     throw error;
   } finally {
@@ -79,12 +93,13 @@ async function downloadFrame(source, index, signal) {
 export function createStream(source, descriptor) {
   const state: any = { descriptor, loaded: new Uint8Array(descriptor.frames.length), errors: new Map(), timings: [], disposed: false, completing: 0, requestSequence: 0 };
   source.stream = state; state.decoder = createFrameDecoder();
+  state.cacheReady = beginImageCache(source.descriptor.sourceId, descriptor);
   state.queue = new FrameQueue(state.loaded.length, async (index, signal) => {
     try {
       for (let attempt = 0; ; attempt++) {
         try { await downloadFrame(source, index, signal); return; }
         catch (error) {
-          if (signal.aborted || attempt >= 2 || !(error.name === 'TimeoutError' || error instanceof TypeError
+          if (signal.aborted || attempt >= 2 || !(error.niftiCacheCorrupt || error.name === 'TimeoutError' || error instanceof TypeError
               || error.status === 425 || error.status === 429 || (error.status >= 500 && error.status <= 504)
               || /429|425|50[0-9]|繁忙|缓存正在|重新生成/.test(error.message))) throw error;
           await new Promise(resolve => setTimeout(resolve, 500 * 2 ** attempt));
@@ -101,6 +116,7 @@ export function createStream(source, descriptor) {
 
 /** Reorder pending work around navigation without discarding loaded or in-flight frames. */
 export function navigateSlice(source, center) {
+  if (source) rememberSlice(source.descriptor, center);
   const state = source?.stream;
   if (!state || state.disposed || state.completing || state.loaded.every(Boolean)) return;
   state.backgroundOrigin = center;

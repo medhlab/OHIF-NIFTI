@@ -81,10 +81,22 @@ function CornerstoneImageScrollbar({
       });
     };
 
+    // Finding/Entity navigation uses setImageIdIndex directly, which does not
+    // emit STACK_VIEWPORT_SCROLL. Commit the displayed NIfTI index as well.
+    const updateDisplayedNiftiIndex = () => {
+      const viewport = cornerstoneViewportService.getCornerstoneViewport(viewportId);
+      if (!viewport?.getCurrentImageId?.()?.startsWith('nifti:')) return;
+      setImageSliceData({
+        imageIndex: viewport.getCurrentImageIdIndex(),
+        numberOfSlices: viewport.getNumberOfSlices(),
+      });
+    };
     element.addEventListener(eventId, updateIndex);
+    element.addEventListener(Enums.Events.STACK_NEW_IMAGE, updateDisplayedNiftiIndex);
 
     return () => {
       element.removeEventListener(eventId, updateIndex);
+      element.removeEventListener(Enums.Events.STACK_NEW_IMAGE, updateDisplayedNiftiIndex);
     };
   }, [viewportData, element]);
 
