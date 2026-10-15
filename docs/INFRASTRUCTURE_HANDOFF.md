@@ -446,3 +446,12 @@ Entity行移除编辑中文字，仅铅笔高亮；空mask图标位于编号后�
 
 ### 2026-10-14 其他报告提示并入列表验收完成
 真实CT验证rf-extra是rf-findings-scroll最后一个子项、前一项F7，展开包含3条报告提示，max-height为none、overflow为visible，跟随列表滚动，不占独立固定区域。完整OHIF构建及67项测试通过（3条webpack warning）。隔离viewer `ohif-nifti-rtx4500-viewer:finding-hints-7a678d4492`；产物rtx4500 `/home/ant/projects/OHIF-NIFTI/releases/finding-hints-20261014/`；回退finding-category-20261014/compose.preview.json。两backend及正式viewer未重启；本次为PR #3之后的独立增量提交。
+
+
+## 2026-10-15 数据集、Finding 多标签与预加载整理发布
+
+本批包含 ReXGroundingCT 原生读取/可恢复批量导入、CT-RATE 原报告、Dataset 与 split 筛选、编辑设置归组与 Finding 定位、滚动过期请求修正、按导航位置重新排序加载、Finding 多标签体积和后续两例压缩帧缓存。服务器仍按 Entity 保存二值 mask 版本，无数据迁移；目前只导入三例 ReX，未全量导入。
+
+当前预览 viewer 为 `ohif-nifti-rtx4500-viewer:concurrency-93d92596dd`，backend 为 `ohif-nifti-rtx4500-backend:datasets-2fd51b77b5`。当前 CT 后台3/总4并发，后续病例2并发，解码worker3；工作预算1.5GiB，压缩帧磁盘缓存512MiB，当前CT完整后预取后续两例。预览部署及回退材料：rtx4500 `/home/ant/projects/OHIF-NIFTI/releases/concurrency-20261015/`；回退使用该目录 `rollback.compose.json`。正式服务未改变。本轮只整理Git，不重启服务或改标注。
+
+43个前端改动文件逐文件匹配最终部署快照，96项前端回归和完整OHIF构建通过（3个已有webpack警告）。真实CT验证缓存切换、加载完后无Loading闪烁；独立病例验证nnInteractive GPU推理、同Finding其他label保留、跨Finding共享Entity同步，以及保存重开导出逐体素哈希一致。验收材料位于同级 `packed-prefetch-20261015/`。单例CT+标签数组从924MiB降至462MiB，不代表浏览器总内存或GPU峰值；未做同条件整例A/B测速。详细数据与阶段记录见 cooperate_space 的三个2026-10-14/15数据集、导入和预加载任务文档。
