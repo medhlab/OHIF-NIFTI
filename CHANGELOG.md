@@ -1,5 +1,23 @@
 # OHIF-AI — Code Change Record
 
+## v0.1.0 — 2026-10-15
+
+首个 Finding / Entity 标注里程碑，标签指向 `090f0fb`（PR #6 合并）。
+
+- 数据集及 split 组织、ReXGroundingCT 专用导入、CT-RATE 报告原文接入和报告顺序修复。
+- Finding/Entity 紧凑工作台、共享关系、颜色/空 mask 图例、明确单目标编辑、病例级完成状态。
+- 顶部手工/AI 工具与提示管理、nnInteractive GPU 编辑和压缩传输、版本化保存重开。
+- 每 Finding 多标签体积，导航驱动渐进加载及后两例预加载。
+- 512 MiB 压缩 CT 持久缓存、刷新位置恢复、缓存占用和清理入口。
+- 减少 mask 导入重复扫描，首个 Entity 提前定位，并修复直接跳转的层号同步。
+- 最终前端构建及 111 项回归通过；真实 CT 缓存、编辑保存重开、定位验收及限制见 [版本说明](docs/V0_1_0.md)。
+
+### 发布后文档补齐
+
+README、使用手册和功能入口统一到 v0.1.0；旧协议、部署及验收文档保留并标明历史范围。此文档修订不移动 v0.1.0 标签，不改变运行代码。
+
+## 历史开发记录
+
 All custom changes made to the OHIF-AI stack on top of the upstream OHIF Viewer + MONAI-Label base.
 Changes are listed in chronological order by session.
 

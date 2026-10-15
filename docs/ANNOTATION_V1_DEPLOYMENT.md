@@ -1,5 +1,7 @@
 # 第一版部署与真实 CT 验收
 
+> 历史部署记录。以下“当前版本”是该阶段当时的版本；最新里程碑见 [v0.1.0](V0_1_0.md)，后续隔离预览与回退见 [基础设施交接](INFRASTRUCTURE_HANDOFF.md)。
+
 当前版本已启用 nnInteractive，前端 9da5928、后端 d5f00fe；最新前端验证和回退见 [缩放方向验收](ZOOM_DIRECTION_FIX.md)，模型启用验收见 [nnInteractive 部署记录](NNINTERACTIVE_DEPLOYMENT.md)。下面保留手工编辑与首版的历史部署。
 
 ## 手工编辑入口修复（2026-10-13，13:27 Asia/Shanghai）

@@ -1,5 +1,7 @@
 # nnInteractive 部署与验收
 
+> 这是模型首次启用时的验收记录；旧工具入口和上传耗时保留用于历史对比。当前操作见 [使用指南](NIFTI_USER_GUIDE.md)，最新功能与限制见 [v0.1.0](V0_1_0.md)。
+
 当前前端 9da5928、后端 d5f00fe；最新前端源码及回退见 [缩放方向验收](ZOOM_DIRECTION_FIX.md)。下面记录 nnInteractive 启用时的验收。
 
 ## nnInteractive 正式启用（2026-10-13，15:03 Asia/Shanghai）
