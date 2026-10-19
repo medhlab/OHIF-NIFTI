@@ -39,7 +39,7 @@ export async function allocateFinding(source, ds, service, key, label, entityId)
   return { ...volume, segmentIndex };
 }
 /** Validate all replicas before writing, so an imported Entity cannot erase a sibling. */
-export function writeBinary(targets, pixels) {
+export function validateBinary(targets, pixels) {
   for (const target of targets) {
     let offset = 0;
     for (const slice of maskSlices(target)) for (let i = 0; i < slice.length; i++, offset++) {
@@ -47,6 +47,10 @@ export function writeBinary(targets, pixels) {
       if (pixels[offset] && value && value !== target.segmentIndex) throw Error('同一 Finding 的 Entity mask 存在重叠，未覆盖已有标注。');
     }
   }
+}
+
+export function writeBinary(targets, pixels) {
+  validateBinary(targets, pixels);
   for (const target of targets) {
     let offset = 0;
     for (const slice of maskSlices(target)) for (let i = 0; i < slice.length; i++, offset++) {

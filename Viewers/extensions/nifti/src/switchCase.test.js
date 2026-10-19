@@ -1,5 +1,8 @@
 jest.mock('@ohif/core', () => ({ DicomMetadataStore: { getStudy: jest.fn(), addStudy: jest.fn() } }));
 jest.mock('@cornerstonejs/core', () => ({ utilities: { HistoryMemo: { DefaultHistoryMemo: { size: 50 } } } }), { virtual: true });
+jest.mock('@cornerstonejs/tools', () => ({}), { virtual: true });
+jest.mock('@cornerstonejs/tools/segmentation/triggerSegmentationEvents', () => ({}), { virtual: true });
+jest.mock('./casePrefetch', () => ({ cancelCasePrefetch: jest.fn(), startCasePrefetch: jest.fn() }));
 jest.mock('./api', () => ({ request: jest.fn(), downloadSource: jest.fn(), openManifestCase: jest.fn() }));
 jest.mock('./sourceStore', () => ({ config: { enableNiftiStreaming: true }, sources: new Map(), openStreaming: jest.fn(), releaseSource: jest.fn(), openLocal: jest.fn() }));
 jest.mock('./streaming', () => ({ prepareStreaming: jest.fn(), ensureSlice: jest.fn() }));

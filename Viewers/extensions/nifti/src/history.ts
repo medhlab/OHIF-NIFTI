@@ -1,5 +1,5 @@
 import { triggerSegmentationDataModified } from '@cornerstonejs/tools/segmentation/triggerSegmentationEvents';
-import { maskId, bindings, writeBinary } from './packedMasks';
+import { maskId, bindings, writeBinary, validateBinary } from './packedMasks';
 import { sources, reserve, release } from './sourceStore';
 import { downloadMask, request } from './api';
 import { annotationRequest, installAnnotationContext } from './annotationClient';
@@ -51,7 +51,7 @@ async function installVersion(servicesManager, source, item, pixels, signal) {
   if (existing) {
     writeBinary(bindings(existing), pixels);
     for (const b of bindings(existing)) triggerSegmentationDataModified(b.segmentationId);
-    existing.saved = item; existing.savedRevision = existing.revision;
+    existing.saved = item; existing.savedRevision = existing.revision; existing.savedHashes = [...existing.hashes];
     return existing;
   }
   const id = await createMask(servicesManager, item.name, pixels, item, signal);
@@ -77,6 +77,7 @@ export async function restoreAnnotation(servicesManager, source, item, latestVer
   try {
     const current = loadedAnnotation(source, item.maskId);
     if (current && isMaskDirty(servicesManager, current)) throw Error('当前编辑发生变化，已取消恢复。');
+    if (current) validateBinary(bindings(current), staged.pixels);
     // Reserve the additional editable buffer before committing a server version.
     reserve(source.sourceKey + ':restore-allocation', source.descriptor.count);
     progress('保存恢复版本…');

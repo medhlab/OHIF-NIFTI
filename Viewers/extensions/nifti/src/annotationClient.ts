@@ -1,6 +1,9 @@
+import { segmentation } from '@cornerstonejs/tools';
+import { bindings } from './packedMasks';
 import { annotationErrorMessage } from './annotationMessages';
 import { apiRoot, ensureStored } from './api';
 import { getWorkspace } from './workspace';
+import { bindLoadedMask } from './legacyMaskAccess.mjs';
 
 export const annotationRoot = () =>
   apiRoot().replace(/\/nifti-images\/?$/, '') + '/api/annotation/v1';
@@ -34,6 +37,18 @@ export async function annotationRequest(
 }
 export function installAnnotationContext(source, body) {
   source.annotationCase = body.data;
+  source.masks?.forEach(mask => {
+    bindLoadedMask(mask, body.data);
+    const metadata = body.maskMetadata?.find(item => item.maskId === mask.saved?.maskId);
+    if (metadata && metadata.version === mask.saved.version && mask.label === mask.saved.name) {
+      mask.label = metadata.name;
+      mask.saved = { ...mask.saved, name: metadata.name, metadataRevision: metadata.metadataRevision };
+      for (const binding of bindings(mask)) {
+        const segment = segmentation.state.getSegmentation(binding.segmentationId)?.segments?.[binding.segmentIndex];
+        if (segment) segment.label = metadata.name;
+      }
+    }
+  });
   window.dispatchEvent(new CustomEvent('nifti:annotation-updated', { detail: source.sourceKey }));
 }
 

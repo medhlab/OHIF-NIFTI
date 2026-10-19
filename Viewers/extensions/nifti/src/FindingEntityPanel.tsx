@@ -162,6 +162,12 @@ export default function FindingEntityPanel() {
     return body.data;
   };
   const editEntity = async (target, entity) => {
+    const active = editingMask(target);
+    if (active && (active.entityId === entity.id ||
+        (entity.maskId && active.saved?.maskId === entity.maskId))) {
+      exitMaskEditing(servicesManager);
+      return;
+    }
     let mask = [...target.masks.values()].find(
       (m: any) => m.entityId === entity.id || m.saved?.maskId === entity.maskId
     );
@@ -328,6 +334,11 @@ export default function FindingEntityPanel() {
         </>
       ) : (
         <>
+          {!!context.legacyManifestImport?.warnings?.length && (
+            <p role="alert">
+              旧清单有 {context.legacyManifestImport.warnings.length} 项关联未导入（文件缺失、归属冲突或报告引用缺失）。原始记录已保留，请核对清单。
+            </p>
+          )}
           <ReportFindings
             key={context.caseId}
             context={context}

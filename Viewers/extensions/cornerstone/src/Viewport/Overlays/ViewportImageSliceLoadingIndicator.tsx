@@ -14,6 +14,7 @@ function ViewportImageSliceLoadingIndicator({ viewportData, element }) {
       const image = viewport?.getCornerstoneImage?.();
       setProgress(image?.niftiLoadingProgress?.() || null);
       setLoading(sliceLoadingState(viewport).loading);
+      if (viewport?.type && viewport.type !== 'stack') setError(false);
     };
     refresh();
     const timer = setInterval(refresh, 500);

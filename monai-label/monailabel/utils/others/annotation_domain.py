@@ -3,6 +3,7 @@ import hashlib
 import json
 import uuid
 from fastapi import HTTPException
+from monailabel.utils.others import nifti_mask_attributes as attributes
 
 CATEGORIES = {
     '1a': '支气管壁增厚', '1b': '支气管扩张', '1c': '肺气肿',
@@ -38,6 +39,21 @@ def read(db, case_id):
     if not row:
         fail('CASE_NOT_FOUND', '标注病例不存在。', 404)
     return json.loads(row[0])
+
+
+def mask_owner(db, source_id, mask_id):
+    if not db.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='annotation_mask_owners'").fetchone():
+        return None
+    row = db.execute('SELECT case_id,entity_id FROM annotation_mask_owners WHERE source=? AND mask_id=?',
+                     (source_id, mask_id)).fetchone()
+    return {'case_id': row[0], 'entity_id': row[1]} if row else None
+
+
+def mask_metadata(db, source_id, record):
+    """Expose current ownership even for versions saved before annotation/v1."""
+    record = attributes.current(db, source_id, record)
+    owner = mask_owner(db, source_id, record['maskId'])
+    return dict(record, annotationCaseId=owner['case_id'], entityId=owner['entity_id']) if owner else record
 
 
 def check(case, expected):
@@ -162,6 +178,10 @@ def mutation(db, case_id, key, payload):
         entity = member(case, 'entities', payload.get('entityId'))
         if 'name' in payload:
             entity['name'] = text(payload['name'], 200)
+            if entity.get('maskId'):
+                raw = db.execute('SELECT metadata FROM masks WHERE source=? AND id=? ORDER BY version DESC LIMIT 1', (case['sourceId'], entity['maskId'])).fetchone()
+                if raw:
+                    attributes.update(db, case['sourceId'], json.loads(raw[0]), {'name': entity['name']})
         if 'annotationDisposition' in payload:
             disposition = payload['annotationDisposition']
             if disposition not in ('needs_annotation', 'not_required'):

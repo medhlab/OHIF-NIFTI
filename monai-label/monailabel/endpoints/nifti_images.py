@@ -21,11 +21,12 @@ import zipfile
 from pathlib import Path
 
 import numpy as np
-from fastapi import APIRouter, File, Form, HTTPException, Query, UploadFile
+from fastapi import APIRouter, File, Form, HTTPException, Query, UploadFile, Header
 from fastapi.responses import FileResponse, Response
 from starlette.background import BackgroundTask
 from pydantic import BaseModel, Field
 from monailabel.utils.others import annotation_domain
+from monailabel.utils.others import nifti_mask_attributes as attributes
 from monailabel.utils.others.nifti_manifest import import_roots, resolve_image, parse_manifest
 from monailabel.utils.others.nifti_groups import ensure_groups, with_group, group_for, assign_group, validate_group, group_name
 from fastapi.responses import StreamingResponse
@@ -434,7 +435,7 @@ def list_masks(source_id: str):
         rows = db.execute('''SELECT m.metadata,latest.first_created,latest.version_count FROM masks m JOIN
           (SELECT id,max(version) v,min(created) first_created,count(*) version_count FROM masks WHERE source=? GROUP BY id) latest
           ON latest.id=m.id AND latest.v=m.version WHERE source=? ORDER BY latest.first_created,m.id''', (source_id, source_id)).fetchall()
-        items = [with_group(db, source_id, dict(json.loads(row['metadata']), firstCreated=row['first_created'], versionCount=row['version_count'])) for row in rows]
+        items = [annotation_domain.mask_metadata(db, source_id, with_group(db, source_id, dict(json.loads(row['metadata']), firstCreated=row['first_created'], versionCount=row['version_count']))) for row in rows]
     return {'items': items}
 
 
@@ -454,8 +455,62 @@ def mask_history(source_id: str, offset: int = Query(0, ge=0), limit: int = Quer
           ON latest.id=m.id WHERE source=? AND (? IS NULL OR m.id=?)
           ORDER BY m.created DESC,m.id,m.version DESC LIMIT ? OFFSET ?''',
           (source_id, source_id, maskId, maskId, limit, offset)).fetchall()
-        items = [with_group(db, source_id, dict(json.loads(row['metadata']), latestVersion=row['v'])) for row in rows]
+        items = [annotation_domain.mask_metadata(db, source_id, with_group(db, source_id, dict(json.loads(row['metadata']), latestVersion=row['v']))) for row in rows]
     return {'items': items, 'total': total}
+
+
+class MaskAttributesUpdate(BaseModel):
+    expectedVersion: int = Field(ge=1, strict=True)
+    expectedMetadataRevision: int = Field(default=0, ge=0, strict=True)
+    name: str | None = None
+    displayColor: list | None = None
+    annotationCaseId: str | None = None
+    annotationEntityId: str | None = None
+    expectedCaseRevision: int | None = None
+
+    class Config:
+        extra = 'forbid'
+
+
+@router.post('/{source_id}/masks/{mask_id}/metadata')
+def update_mask_attributes(source_id: str, mask_id: str, payload: MaskAttributesUpdate,
+                           idempotency_key: str = Header(...)):
+    enabled('ENABLE_NIFTI_EDITING'); get_source(source_id); checked_id(mask_id)
+    if not idempotency_key or len(idempotency_key) > 200:
+        raise HTTPException(422, 'Invalid idempotency key.')
+    changes = {}
+    if payload.name is not None:
+        changes['name'] = annotation_domain.text(payload.name, 200)
+    if payload.displayColor is not None:
+        color = payload.displayColor
+        if len(color) != 4 or any(type(v) is not int or not 0 <= v <= 255 for v in color) or color[3] != 255:
+            raise HTTPException(422, 'Invalid display color.')
+        changes['displayColor'] = color
+    if not changes: raise HTTPException(422, 'No metadata supplied.')
+    digest = hashlib.sha256(payload.model_dump_json().encode()).hexdigest()
+    namespace = '__mask_metadata__:' + source_id + ':' + mask_id
+    with database() as db:
+        db.execute('BEGIN IMMEDIATE'); annotation_domain.schema(db)
+        prior = db.execute('SELECT digest,response FROM annotation_requests WHERE case_id=? AND key=?', (namespace, idempotency_key)).fetchone()
+        if prior:
+            if prior[0] != digest: raise HTTPException(409, 'Idempotency key reused.')
+            return json.loads(prior[1])
+        case = annotation_domain.validate_mask_write(db, source_id, mask_id, payload.annotationCaseId,
+                                                     payload.annotationEntityId, payload.expectedCaseRevision)
+        row = db.execute('SELECT metadata FROM masks WHERE source=? AND id=? ORDER BY version DESC LIMIT 1', (source_id, mask_id)).fetchone()
+        if not row: raise HTTPException(404, 'Mask not found.')
+        record = json.loads(row[0])
+        if record.get('anatomyReadOnly'): raise HTTPException(409, 'Read-only anatomy.')
+        if record['version'] != payload.expectedVersion: raise HTTPException(409, 'Mask version changed; reload before saving.')
+        value, changed = attributes.update(db, source_id, record, changes, payload.expectedMetadataRevision)
+        if case and 'name' in changes:
+            entity = annotation_domain.member(case, 'entities', payload.annotationEntityId)
+            if entity['name'] != changes['name']:
+                entity['name'] = changes['name']; annotation_domain.persist(db, case)
+        result = {'items': [dict(annotation_domain.mask_metadata(db, source_id, value), saveStatus='metadata' if changed else 'skipped')]}
+        if case: result['caseRevision'] = case['revision']
+        db.execute('INSERT INTO annotation_requests VALUES (?,?,?,?)', (namespace, idempotency_key, digest, json.dumps(result)))
+        return result
 
 
 @router.post('/{source_id}/masks')
@@ -595,11 +650,26 @@ def save_masks(source_id: str, file: UploadFile = File(...), label: str = Form('
                         record['anatomyLayerId'] = anatomy_layer['id']
                         record['name'] = anatomy_layer['labelMap'][str(int(value))]
                         anatomy_layer['maskIds'].append(mid)
+                    record['voxelHash'] = hashlib.sha256((data == value).astype(np.uint8).tobytes()).hexdigest()
+                    if previous:
+                        prior_hash = prior.get('voxelHash')
+                        if not prior_hash:
+                            _, previous_data = read_nifti(mask_root / str(previous) / 'mask.nii.gz', source['unit'], mask=True)
+                            prior_hash = hashlib.sha256((previous_data != 0).astype(np.uint8).tobytes()).hexdigest()
+                        changes = {'name': record['name']}
+                        if display_color is not None: changes['displayColor'] = display_color
+                        effective, metadata_changed = attributes.update(db, source_id, prior, changes)
+                        if annotation_case and annotation_domain.member(annotation_case, 'entities', annotationEntityId)['name'] != record['name']:
+                            annotation_domain.member(annotation_case, 'entities', annotationEntityId)['name'] = record['name']
+                            annotation_domain.persist(db, annotation_case)
+                        if prior_hash == record['voxelHash']:
+                            results.append(dict(annotation_domain.mask_metadata(db, source_id, effective), saveStatus='metadata' if metadata_changed else 'skipped'))
+                            continue
                     if annotation_case:
                         record['parentVersion'] = previous or None
                         record['voxelCount'] = int(np.count_nonzero(data == value))
                         record['voxelHash'] = hashlib.sha256((data == value).astype(np.uint8).tobytes()).hexdigest()
-                        content_changed = not previous or any(prior.get(field) != record.get(field) for field in ('voxelHash', 'name', 'labelOnly'))
+                        content_changed = True
                         annotation_domain.bind_mask(db, annotation_case, annotationEntityId, record, bump=content_changed)
                     stage_dir = Path(temp) / mid
                     stage_dir.mkdir()
@@ -618,7 +688,7 @@ def save_masks(source_id: str, file: UploadFile = File(...), label: str = Form('
                         sync_directory(directory)
                     committed.append(target)
                     db.execute('INSERT INTO masks VALUES (?,?,?,?,?)', (source_id, mid, version, json.dumps(record), record['created']))
-                    results.append(record)
+                    results.append(dict(annotation_domain.mask_metadata(db, source_id, record), saveStatus='saved'))
                 if anatomy_layer:
                     anatomy_case['anatomyLayers'].append(anatomy_layer)
                     annotation_domain.persist(db, anatomy_case, bump=False)
@@ -640,7 +710,7 @@ def mask_record(source_id, mask_id, version=None):
         ensure_groups(db, source_id)
         row = db.execute('SELECT metadata FROM masks WHERE source=? AND id=? AND (? IS NULL OR version=?) ORDER BY version DESC LIMIT 1',
                          (source_id, mask_id, version, version)).fetchone()
-        record = with_group(db, source_id, json.loads(row['metadata'])) if row else None
+        record = annotation_domain.mask_metadata(db, source_id, with_group(db, source_id, json.loads(row['metadata']))) if row else None
     if not row:
         raise HTTPException(404, 'Mask version not found.')
     return record, root() / source_id / 'masks' / mask_id / str(record['version']) / 'mask.nii.gz'
@@ -682,10 +752,11 @@ def restore_mask(source_id: str, mask_id: str, operation: RestoreMask):
                         raise HTTPException(409, 'Restore request identity was reused for another operation.')
                     record = json.loads(db.execute('SELECT metadata FROM masks WHERE source=? AND id=? AND version=?',
                                         (source_id, mask_id, repeated['version'])).fetchone()[0])
-                    return {'item': with_group(db, source_id, record), 'replayed': True}
+                    return {'item': annotation_domain.mask_metadata(db, source_id, with_group(db, source_id, record)), 'replayed': True}
                 annotation_case = annotation_domain.validate_mask_write(db, source_id, mask_id, operation.annotationCaseId, operation.annotationEntityId, operation.expectedCaseRevision)
                 latest = json.loads(db.execute('SELECT metadata FROM masks WHERE source=? AND id=? ORDER BY version DESC LIMIT 1',
                                    (source_id, mask_id)).fetchone()[0])
+                latest = annotation_domain.mask_metadata(db, source_id, latest)
                 if latest['version'] != operation.expectedVersion:
                     raise HTTPException(409, '标注已有更新版本，请刷新历史后再恢复。')
                 if operation.version == latest['version']:
@@ -695,6 +766,8 @@ def restore_mask(source_id: str, mask_id: str, operation: RestoreMask):
                 version = max([latest['version'], *disk]) + 1
                 record = dict(chosen, version=version, created=now(), name=latest['name'],
                               restoredFrom=operation.version, parentVersion=latest['version'], operation='restore')
+                if 'displayColor' in latest:
+                    record['displayColor'] = latest['displayColor']
                 # Copy lineage belongs to the annotation, not the selected point in time.
                 if 'derivedFrom' in latest:
                     record['derivedFrom'] = latest['derivedFrom']

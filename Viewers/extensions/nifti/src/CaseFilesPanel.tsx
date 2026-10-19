@@ -4,7 +4,7 @@ import { useNavigate } from 'react-router-dom';
 import { useSystem } from '@ohif/core';
 import { ChevronDown, ChevronRight, Layers, Circle, ArrowLeft } from 'lucide-react';
 import { findingMasks, locateFinding, useWorkspace } from './workspace';
-import { isMaskDirty } from './masks';
+import { isMaskDirty, maskAppearance } from './masks';
 import './workspace.css';
 import { switchCase } from './switchCase';
 import CaseCompletion from './CaseCompletion';
@@ -240,12 +240,14 @@ export default function CaseFilesPanel() {
                               masks.map(m => (
                                 <button
                                   key={maskId(m)}
+                                  data-mask-id={m.saved?.maskId || maskId(m)}
+                                  data-entity-id={m.entityId}
                                   onClick={() => select(finding, m)}
                                 >
                                   <Circle
                                     size={11}
                                     style={{
-                                      color: `rgb(${m.displayColor?.slice(0, 3).join(',') || '103,223,223'})`,
+                                      color: `rgb(${maskAppearance(servicesManager, m)?.slice(0, 3).join(',') || '103,223,223'})`,
                                     }}
                                   />
                                   Label {m.originalLabel ?? m.saved?.originalLabel ?? 1}

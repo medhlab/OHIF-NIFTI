@@ -1,3 +1,4 @@
+import { voxelDirty, metadataChanges } from './maskSaveState.mjs';
 import { maskId, maskIndex, activeMask, bindings, findingKeys, allocateFinding, writeBinary, synchronizeEntity, removeMask, notifyImportedMask } from './packedMasks';
 import { encodeMask, uploadForm } from './maskTransport.mjs';
 import { annotationErrorMessage } from './annotationMessages';
@@ -10,6 +11,7 @@ import { ensureStored, request, upload, downloadMask, apiRoot } from './api';
 import { transformPoint } from './format.mjs';
 import { initialMaskColor, validColor } from './maskColors.mjs';
 import { annotationRoot, annotationRequest, installAnnotationContext, registerAnnotationCase } from './annotationClient';
+import { bindLoadedMask, canLoadSavedMask } from './legacyMaskAccess.mjs';
 import { newGroup, importGroup, maskGroup, targetName } from './groups';
 
 export function currentSource(servicesManager) {
@@ -92,12 +94,15 @@ export async function createMask(
     marks.representation = performance.now() - timing;
     const primary = targets[0];
     source.masks.set(id, {
-      id, ...primary, bindings: targets, entityId, label, saved, segmentationSet, displayColor,
+      id, ...primary, bindings: targets, entityId, annotationCaseId: saved?.annotationCaseId, label, saved, segmentationSet, displayColor,
       revision: 0, savedRevision: saved ? 0 : -1, generation: 0,
       hashes: sliceHashes(primary.imageIds, undefined, undefined, primary.segmentIndex),
     });
     segmentationService.setActiveSegmentation(viewportId, primary.segmentationId);
     segmentationService.setActiveSegment(primary.segmentationId, primary.segmentIndex);
+    const created = source.masks.get(id);
+    if (saved) created.savedHashes = [...created.hashes];
+    bindLoadedMask(created, source.annotationCase);
     marks.hash = performance.now() - timing;
     notifyImportedMask(source, targets);
     marks.events = performance.now() - timing;
@@ -126,12 +131,7 @@ export function maskAppearance(servicesManager, mask) {
 
 export function isMaskDirty(servicesManager, mask) {
   if (mask.anatomyReadOnly || mask.saved?.anatomyReadOnly) return false;
-  return (
-    mask.revision !== mask.savedRevision ||
-    (!!mask.saved &&
-      JSON.stringify(maskAppearance(servicesManager, mask)) !==
-        JSON.stringify(mask.saved.displayColor || mask.displayColor))
-  );
+  return voxelDirty(mask) || Object.keys(metadataChanges(mask, maskAppearance(servicesManager, mask))).length > 0;
 }
 
 export function readMask(source, id): Uint8Array {
@@ -299,8 +299,6 @@ export async function importMasks(
       mask.originalFile = saved?.originalFile ?? file.name;
       mask.alignment = saved?.alignment ?? map;
       mask.derivedFrom = saved?.derivedFrom;
-      mask.entityId = saved?.entityId;
-      mask.annotationCaseId = saved?.annotationCaseId;
       if (saved?.anatomyReadOnly) {
         mask.anatomyReadOnly = true;
         servicesManager.services.segmentationService.setSegmentLocked(mask.segmentationId, maskIndex(mask), true);
@@ -326,14 +324,38 @@ export async function saveAll(servicesManager, signal?, progress?) {
   for (const [id, mask] of source.masks) {
     if (mask.anatomyReadOnly || mask.saved?.anatomyReadOnly) continue;
     const displayColor = maskAppearance(servicesManager, mask);
-    if (mask.saved && !isMaskDirty(servicesManager, mask) && mask.saved.displayColor) {
-      results.push({ id, success: true });
+    const changes = metadataChanges(mask, displayColor);
+    const pixelsChanged = voxelDirty(mask);
+    if (!pixelsChanged && !Object.keys(changes).length) {
+      results.push({ id, success: true, status: 'skipped' });
       continue;
     }
     const owner = source.sourceKey + ':save';
     try {
-      reserve(owner, source.descriptor.count * 2);
       const revision = mask.revision;
+      const savedHashes = mask.hashes && [...mask.hashes];
+      if (!pixelsChanged) {
+        const payload = { ...changes, expectedVersion: mask.saved.version,
+          expectedMetadataRevision: mask.saved.metadataRevision || 0,
+          ...(source.annotationCase ? { annotationCaseId: source.annotationCase.caseId,
+            annotationEntityId: mask.entityId || mask.saved.entityId,
+            expectedCaseRevision: source.annotationCase.revision } : {}) };
+        const fingerprint = JSON.stringify(payload);
+        if (mask.pendingMetadata?.fingerprint !== fingerprint)
+          mask.pendingMetadata = { fingerprint, key: crypto.randomUUID() };
+        progress?.(`${mask.label} · 更新名称/颜色`);
+        const response = await request(`/${source.descriptor.sourceId}/masks/${mask.saved.maskId}/metadata`, {
+          method: 'POST', signal, headers: { 'Content-Type': 'application/json', 'Idempotency-Key': mask.pendingMetadata.key },
+          body: JSON.stringify(payload),
+        });
+        const reply = await response.json();
+        if (source.annotationCase) installAnnotationContext(source, await annotationRequest(`/cases/${source.annotationCase.caseId}/context`, undefined, signal));
+        mask.saved = reply.items[0]; mask.savedRevision = revision;
+        mask.pendingMetadata = undefined;
+        results.push({ id, success: true, status: reply.items[0].saveStatus || 'metadata' });
+        continue;
+      }
+      reserve(owner, source.descriptor.count * 2);
       progress?.(`${mask.label} · 准备 mask`);
       const pixels = readMask(source, id);
       progress?.(`${mask.label} · 无损压缩`);
@@ -448,11 +470,12 @@ export async function saveAll(servicesManager, signal?, progress?) {
       }
       mask.saved = reply.items[0];
       mask.savedRevision = revision;
+      mask.savedHashes = savedHashes;
       if (mask.saved.segmentationSet) mask.segmentationSet = mask.saved.segmentationSet;
-      results.push({ id, success: true });
+      results.push({ id, success: true, status: reply.items[0].saveStatus || 'saved' });
     } catch (error) {
       if (signal?.aborted) throw error;
-      results.push({ id, success: false, error: error.message });
+      results.push({ id, success: false, status: 'failed', error: error.message });
     } finally {
       release(owner);
     }
@@ -468,14 +491,8 @@ export async function loadSaved(servicesManager, signal?, maskIds?: string[], op
     (await (await request(`/${source.descriptor.sourceId}/masks`, { signal })).json()).items;
   assertActive(servicesManager, source, signal);
   if (!source.annotationCase && all.some(item => item.entityId)) await registerAnnotationCase(source, signal);
-  const allowed = source.annotationCase
-    ? new Set([
-        ...source.annotationCase.entities.map(e => e.maskId).filter(Boolean),
-        ...source.annotationCase.anatomyLayers.flatMap(layer => layer.maskIds),
-      ])
-    : null;
   const items = all.filter(
-    item => (!maskIds || maskIds.includes(item.maskId)) && (!allowed || allowed.has(item.maskId))
+    item => (!maskIds || maskIds.includes(item.maskId)) && canLoadSavedMask(item, source.annotationCase)
   );
   // Keep the requested Entity order so the first visible target can be located early.
   if (maskIds) items.sort((a, b) => maskIds.indexOf(a.maskId) - maskIds.indexOf(b.maskId));

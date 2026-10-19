@@ -167,7 +167,8 @@ def test_presentation_only_save_keeps_completion(client,tmp_path):
     assert response.status_code==200,response.text
     after=state(client,case)
     assert after['revision']==case['revision'] and after['completedRevision']==after['revision']
-    assert response.json()['items'][0]['parentVersion']==1
+    assert response.json()['items'][0]['version']==1
+    assert response.json()['items'][0]['saveStatus']=='metadata'
 
 
 def test_delete_shared_entity_preserves_report_and_mask_history(client, tmp_path):
@@ -226,7 +227,7 @@ def test_gzip_mask_matches_raw_version_and_replays(client, tmp_path):
             files={'file':('mask.bin.gz',gzip.compress(seed.tobytes()))})
     response=packed();assert response.status_code==200,response.text
     item=response.json()['items'][0]
-    assert item['maskId']==first['maskId'] and item['version']==2
+    assert item['maskId']==first['maskId'] and item['version']==1
     assert item['voxelHash']==first['voxelHash'] and item['voxelCount']==4
     assert item['geometryHash']==first['geometryHash']
     assert packed().json()==response.json()

@@ -1,4 +1,5 @@
 import json
+import gzip
 import numpy as np
 from test_library import client, upload
 from test_format import phantom
@@ -18,11 +19,13 @@ def test_color_metadata_versions_and_legacy_preservation(client, tmp_path):
     fields.update(maskId=mask['maskId'], expectedVersion='1', provenance='{}')
     second = client.post(url, data=fields, files={'file': ('mask.bin', pixels)}).json()['items'][0]
     assert second['displayColor'] == mask['displayColor']
-    fields.update(expectedVersion='2', provenance=json.dumps({'displayColor': [255, 175, 40, 255]}))
+    assert second['version'] == 1 and second['saveStatus'] == 'skipped'
+    fields.update(expectedVersion='1', provenance=json.dumps({'displayColor': [255, 175, 40, 255]}))
     third = client.post(url, data=fields, files={'file': ('mask.bin', pixels)}).json()['items'][0]
+    assert third['version'] == 1 and third['saveStatus'] == 'metadata'
     assert third['displayColor'] == [255, 175, 40, 255]
     assert client.get(url).json()['items'][0]['displayColor'] == third['displayColor']
-    assert client.get(url + '/' + mask['maskId'] + '?version=1').content == client.get(url + '/' + mask['maskId'] + '?version=3').content
+    assert client.get(url + '/history').json()['total'] == 1
 
 
 def test_bad_color_does_not_commit_a_mask(client, tmp_path):
