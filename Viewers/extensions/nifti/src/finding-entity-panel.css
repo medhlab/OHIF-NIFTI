@@ -508,3 +508,25 @@
 
 .nw-shell .rf-findings-scroll > .rf-extra { margin:6px 0 0; border:0; border-top:1px solid #4a3b57; border-radius:0; padding:7px 0; }
 .nw-shell .rf-findings-scroll > .rf-extra[open] { max-height:none; overflow:visible; }
+
+/* Report selection action: float above the text without consuming panel space. */
+.annotation-panel.rf-selection-popover {
+  position: fixed;
+  z-index: 1200;
+  box-sizing: border-box;
+  max-width: calc(100vw - 16px);
+  max-height: calc(100vh - 16px);
+  overflow: auto;
+  padding: 4px 6px;
+  border: 1px solid #77608f;
+  border-radius: 6px;
+  box-shadow: 0 4px 16px #0008;
+  font-size: 12px;
+}
+.rf-selection-actions { display: flex; align-items: center; justify-content: flex-end; }
+.rf-selection-actions button { display: inline-flex; align-items: center; gap: 4px; white-space: nowrap; }
+.rf-selection-popover .finding-create { border: 0; padding: 0; }
+.rf-selection-popover .finding-create h3 { margin: 0; }
+.rf-selection-popover .finding-create small { max-height: 60px; overflow: auto; }
+.rf-create { position: relative; }
+.annotation-panel .rf-create-close { float: right; padding: 3px; }

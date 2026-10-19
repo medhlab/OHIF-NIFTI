@@ -1,3 +1,4 @@
+import FindingSelectionPopover from './FindingSelectionPopover';
 import EntityName from './EntityName';
 import { entityLabel } from './entityLabels.mjs';
 import React, { useEffect, useRef, useState } from 'react';
@@ -12,6 +13,7 @@ import {
   Unlink,
   Trash2,
   Pencil,
+  X,
 } from 'lucide-react';
 import {
   reportSegments,
@@ -56,6 +58,7 @@ export default function ReportFindings({
   const [findingsOpen, setFindingsOpen] = useState(true);
   const [reportOpen, setReportOpen] = useState(true),
     [createOpen, setCreateOpen] = useState(false);
+  const [selectionAnchor, setSelectionAnchor] = useState<DOMRect | null>(null);
   const [expandedFindingId, setExpandedFindingId] = useState('');
   const [search, setSearch] = useState('');
   const [selectedEntityId, setSelectedEntityId] = useState('');
@@ -167,7 +170,11 @@ export default function ReportFindings({
       },
       quote
     );
-    setCreateOpen(true);
+    // Anchor to the first selected line, rather than the entire multi-line block.
+    const rect = Array.from(range.getClientRects()).find(rect => rect.width && rect.height);
+    if (!rect) return;
+    setCreateOpen(false);
+    setSelectionAnchor(rect);
   };
   const related = selected
     ? (extraction.relations || []).filter(
@@ -463,10 +470,20 @@ export default function ReportFindings({
         <button type="button" className="rf-add-finding" title="补充 Finding"
           aria-label="补充 Finding" aria-expanded={createOpen}
           aria-controls={`finding-create-${context.caseId}`}
-          onClick={() => setCreateOpen(!createOpen)}><Plus size={16} aria-hidden="true" /></button></>} />
+          onClick={() => {
+            setSelectionAnchor(null);
+            if (!createOpen) onSelection(null, '');
+            setCreateOpen(!createOpen);
+          }}><Plus size={16} aria-hidden="true" /></button></>} />
       {createOpen && <div className="rf-create" id={`finding-create-${context.caseId}`}>
+        <button type="button" className="rf-create-close" title="关闭" aria-label="关闭创建 Finding"
+          onClick={() => setCreateOpen(false)}><X size={14} /></button>
         {createForm}
       </div>}
+      {selectionAnchor && <FindingSelectionPopover anchor={selectionAnchor}
+        findingCount={context.findings.length} onClose={() => setSelectionAnchor(null)}>
+        {createForm}
+      </FindingSelectionPopover>}
       <div className="rf-findings-body" id={`findings-list-${context.caseId}`} hidden={!findingsOpen}>
       <div className="rf-findings-scroll">
         {filtered.map(finding => {
