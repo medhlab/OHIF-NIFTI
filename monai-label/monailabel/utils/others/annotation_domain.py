@@ -106,6 +106,7 @@ def mutation(db, case_id, key, payload):
         return json.loads(prior[1])
     case = read(db, case_id)
     check(case, payload.get('expectedCaseRevision'))
+    changed = True
     op = payload.get('operation')
     if op == 'report':
         sections = payload.get('sections')
@@ -121,7 +122,10 @@ def mutation(db, case_id, key, payload):
     elif op == 'reportExtraction':
         from .report_extraction import import_result
         external = db.execute('SELECT external_key FROM annotation_cases WHERE id=?', (case_id,)).fetchone()[0]
-        import_result(case, payload, external)
+        changed = import_result(case, payload, external)
+    elif op == 'ontologyMapping':
+        from .report_ontology import import_ontology
+        changed = import_ontology(case, payload)
     elif op == 'finding':
         category = payload.get('category')
         if category is not None and (not isinstance(category, str) or category not in CATEGORIES):
@@ -209,7 +213,8 @@ def mutation(db, case_id, key, payload):
         case['completedRevision'] = case['revision']
     else:
         fail('UNKNOWN_OPERATION', '不支持的标注操作。')
-    persist(db, case, bump=op != 'complete')
+    if changed:
+        persist(db, case, bump=op != 'complete')
     result = reply(case)
     db.execute('INSERT INTO annotation_requests VALUES (?,?,?,?)', (case_id, key, digest, json.dumps(result, ensure_ascii=False)))
     return result

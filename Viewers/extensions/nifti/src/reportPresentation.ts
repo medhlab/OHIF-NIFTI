@@ -29,7 +29,7 @@ export function reportSegments(text, evidence, findings, focusedId) {
 }
 
 export const assertionText = assertion =>
-  ({ definite: '明确描述', uncertain: '不确定', negated: '阴性', unknown: '未说明' })[assertion] ||
+  ({ definite: '明确描述', uncertain: '不确定', negated: '阴性', unknown: '未说明', unresolved: '归属待核对' })[assertion] ||
   '未说明';
 export const rejectionText = reason =>
   ({
@@ -64,3 +64,19 @@ export const warningText = warning =>
     laterality_scope_differs: '左右侧范围不同',
     certainty_differs: '确定性不同',
   })[warning] || warning;
+
+/** Stable display-only ordering; never mutate IDs or persisted human objects. */
+export function sourceOrderedFindings(context) {
+  const ranks = new Map();
+  let index = 0;
+  for (const report of context.reports) for (const section of report.sections) ranks.set(section.id, index++);
+  const evidence = new Map(context.evidence.map(e => [e.id, e]));
+  const key = finding => finding.evidenceIds.map(id => evidence.get(id))
+    .filter(Boolean).map((e: any) => [ranks.get(e.sectionId) ?? Infinity, e.start, e.end])
+    .sort(compare)[0] || [Infinity, Infinity, Infinity];
+  function compare(a, b) {
+    for (let i = 0; i < 3; i++) { if (a[i] < b[i]) return -1; if (a[i] > b[i]) return 1; }
+    return 0;
+  }
+  return [...context.findings].sort((a, b) => compare(key(a), key(b)));
+}

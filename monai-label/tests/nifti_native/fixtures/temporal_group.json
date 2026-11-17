@@ -1,0 +1,207 @@
+{
+  "schemaVersion": "lesion-harvest.case-semantics/v2",
+  "caseId": "group_ui",
+  "volumeName": "group_ui.nii.gz",
+  "modelName": "unknown",
+  "reports": {
+    "findings": {
+      "text": "Nodule and effusion have decreased.",
+      "sha256": "8038f691889f3d7e0906556cf028825cbdce886f8c45b7a2889f8451828b47cb"
+    },
+    "impressions": {
+      "text": "",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    }
+  },
+  "evidence": [
+    {
+      "id": "ev-ea3d73275da6c50115a4df59",
+      "section": "findings",
+      "start": 0,
+      "end": 35,
+      "text": "Nodule and effusion have decreased."
+    }
+  ],
+  "observations": [
+    {
+      "id": "obs-e096e2f54a52915c68acf003",
+      "revision": 1,
+      "rawMentionIndex": 0,
+      "observationType": "finding",
+      "concept": {
+        "text": "nodule",
+        "mappings": []
+      },
+      "text": "Nodule and effusion have decreased.",
+      "sentenceEvidenceId": "ev-ea3d73275da6c50115a4df59",
+      "evidenceIds": [
+        "ev-ea3d73275da6c50115a4df59"
+      ],
+      "assertion": {
+        "value": "definite",
+        "method": "model_assertion_with_scoped_check",
+        "modelValue": "definite",
+        "evidenceIds": [
+          "ev-ea3d73275da6c50115a4df59"
+        ]
+      },
+      "temporal": {
+        "value": "unknown",
+        "provenance": "legacy_unspecified"
+      },
+      "anatomy": [],
+      "attributes": [],
+      "targetEligibility": {
+        "status": "candidate",
+        "imageVerified": false,
+        "scope": "report_observation_not_physical_entity"
+      }
+    },
+    {
+      "id": "obs-4aa358871e930b5b7d000901",
+      "revision": 1,
+      "rawMentionIndex": 1,
+      "observationType": "finding",
+      "concept": {
+        "text": "effusion",
+        "mappings": []
+      },
+      "text": "Nodule and effusion have decreased.",
+      "sentenceEvidenceId": "ev-ea3d73275da6c50115a4df59",
+      "evidenceIds": [
+        "ev-ea3d73275da6c50115a4df59"
+      ],
+      "assertion": {
+        "value": "definite",
+        "method": "model_assertion_with_scoped_check",
+        "modelValue": "definite",
+        "evidenceIds": [
+          "ev-ea3d73275da6c50115a4df59"
+        ]
+      },
+      "temporal": {
+        "value": "unknown",
+        "provenance": "legacy_unspecified"
+      },
+      "anatomy": [],
+      "attributes": [],
+      "targetEligibility": {
+        "status": "candidate",
+        "imageVerified": false,
+        "scope": "report_observation_not_physical_entity"
+      }
+    }
+  ],
+  "relations": [],
+  "labelAssignments": [],
+  "legacyIdMap": {},
+  "legacyContext": null,
+  "rejectedMentions": [],
+  "issues": [],
+  "rawModelOutput": {
+    "mentions": [
+      {
+        "section": "findings",
+        "source_text": "Nodule and effusion have decreased.",
+        "term": "nodule",
+        "certainty": "definite"
+      },
+      {
+        "section": "findings",
+        "source_text": "Nodule and effusion have decreased.",
+        "term": "effusion",
+        "certainty": "definite"
+      }
+    ],
+    "relations": [
+      {
+        "source_mention": 0,
+        "target_mentions": [],
+        "relation_type": "compared_to",
+        "evidence": [
+          {
+            "section": "findings",
+            "source_text": "Nodule and effusion have decreased."
+          }
+        ]
+      }
+    ]
+  },
+  "provenance": {
+    "mode": "model_extraction",
+    "inputSha256": null,
+    "coverage": "not_validated",
+    "identityPolicy": "evidence_occurrence_allocation_no_cross_run_reconciliation",
+    "temporalComparisonPolicy": "lesion-harvest.targetless-comparison/v1"
+  },
+  "counts": {
+    "observations": 2,
+    "rejectedMentions": 0,
+    "targetCandidates": 2
+  },
+  "orderingPolicy": "report-section-start-end/stable-v1",
+  "temporalGroups": [
+    {
+      "id": "timegroup-52ca13968a98f64b2f6b2f0f",
+      "observationIds": [
+        "obs-e096e2f54a52915c68acf003",
+        "obs-4aa358871e930b5b7d000901"
+      ],
+      "evidenceIds": [
+        "ev-ea3d73275da6c50115a4df59"
+      ],
+      "sourceRelationIndices": [
+        0
+      ],
+      "scope": "group_only_no_member_change",
+      "status": "proposed",
+      "humanConfirmed": false,
+      "provenance": "explicit_report_review"
+    }
+  ],
+  "temporalResolution": {
+    "schemaVersion": "lesion-harvest.reviewed-temporal/v1",
+    "ledgerSha256": "e515eb997581fc52aae5713e02cfd418143b65f6475e46003fc2bd5a4935a078",
+    "reportSha256": {
+      "findings": "8038f691889f3d7e0906556cf028825cbdce886f8c45b7a2889f8451828b47cb",
+      "impressions": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "rawSha256": "72ed9fb843606de858bf91016781bc85df45a9a3b7c479ceb5f382f2127355de",
+    "changes": [
+      {
+        "action": "group",
+        "reason": "Synthetic collective subject",
+        "before": [
+          {
+            "observationId": "obs-e096e2f54a52915c68acf003",
+            "rawMentionIndex": 0,
+            "statement": {
+              "id": "time-ce456b3c9a4f5dc714009e65",
+              "text": "Nodule and effusion have decreased.",
+              "evidenceIds": [
+                "ev-ea3d73275da6c50115a4df59"
+              ],
+              "status": "ambiguous",
+              "reasons": [
+                "comparison_evidence_shared_by_observations"
+              ],
+              "competingObservationIds": [
+                "obs-4aa358871e930b5b7d000901"
+              ],
+              "sourceRelationIndex": 0,
+              "provenance": "targetless_compared_to_model_owner",
+              "humanConfirmed": false
+            }
+          }
+        ],
+        "humanConfirmed": false,
+        "groupId": "timegroup-52ca13968a98f64b2f6b2f0f",
+        "memberIds": [
+          "obs-e096e2f54a52915c68acf003",
+          "obs-4aa358871e930b5b7d000901"
+        ]
+      }
+    ],
+    "humanConfirmed": false
+  }
+}

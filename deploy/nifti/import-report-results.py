@@ -2,6 +2,7 @@
 import argparse
 import hashlib
 import json
+import sys
 import urllib.request
 from pathlib import Path, PurePosixPath
 
@@ -10,13 +11,24 @@ def main():
     p=argparse.ArgumentParser(description=__doc__)
     p.add_argument('--base-url',required=True,help='Service root, e.g. http://localhost:1028/monai')
     p.add_argument('--data-dir',type=Path,required=True,help='pilot directory containing source.json and cases/')
+    p.add_argument('--format', choices=['legacy-v1', 'case-v2'], default='legacy-v1')
+    p.add_argument('--results-dir',type=Path,help='Explicit cached result directory (case-v2: reviewed-v2-replay/v2)')
     p.add_argument('--run-id',required=True)
     p.add_argument('--manifest-id')
     p.add_argument('--image-root',default='/datasets/ct-rate')
     p.add_argument('--output',type=Path,required=True)
     args=p.parse_args();base=args.base_url.rstrip('/')
     sources={s['name']:s for s in json.loads((args.data_dir/'source.json').read_text())['volumes']}
-    records=[json.loads(f.read_text()) for f in sorted((args.data_dir/'cases').glob('*.json'))]
+    records=[json.loads(f.read_text()) for f in sorted((args.results_dir or args.data_dir/'cases').glob('*.json'))]
+    if not records: raise ValueError('No cached results')
+    is_v2 = args.format == 'case-v2'
+    if is_v2:
+        if not args.manifest_id: raise ValueError('case-v2 requires an existing manifest; never recreate cases for migration')
+        sys.path.insert(0, str(Path(__file__).resolve().parents[2]/'monai-label'))
+        from monailabel.utils.others.report_case_v2 import validate
+        for result in records: validate(sources[result['volumeName']], result)
+    elif any(r.get('schemaVersion') not in (None, 'lesion-harvest.report-lesions/v1') for r in records):
+        raise ValueError('Use --format case-v2 for versioned case results')
     if len({r['volumeName'] for r in records})!=len(records):raise ValueError('Duplicate volume identity')
     def request(path,body=None,key=None,ctype='application/json'):
         headers={'Content-Type':ctype}
@@ -46,17 +58,20 @@ def main():
         if key not in case_ids:raise ValueError('Result volume not in supplied manifest: '+key)
         cid=case_ids[key];source=sources[result['volumeName']]
         current=request(f'/api/annotation/v1/cases/{cid}/context')['data']
-        digest=hashlib.sha256(json.dumps({'source':source,'result':result},ensure_ascii=False,sort_keys=True).encode()).hexdigest()
-        prior=current.get('reportExtraction')
+        options = {'separators': (',', ':')} if is_v2 else {}
+        digest=hashlib.sha256(json.dumps({'source':source,'result':result},ensure_ascii=False,sort_keys=True,**options).encode()).hexdigest()
+        field = 'caseV2Extraction' if is_v2 else 'reportExtraction'
+        prior=current.get(field)
         if prior:
-            if prior['runId']!=args.run_id or prior['inputSha256']!=digest:raise ValueError('Existing extraction differs; not overwritten: '+key)
+            if (not is_v2 and prior['runId']!=args.run_id) or prior['inputSha256']!=digest:raise ValueError('Existing extraction differs; not overwritten: '+key)
         else:
             payload={'operation':'reportExtraction','expectedCaseRevision':current['revision'],'runId':args.run_id,'reportSource':source,'result':result}
             response=request(f'/api/annotation/v1/cases/{cid}/operations',payload,key='report-'+digest)
-            prior=response['data']['reportExtraction']
+            prior=response['data'][field]
         saved.append({'externalCaseId':key,'caseId':cid,'counts':prior['counts']})
-        if result['sharedReportHash'] not in seen:
-            seen.add(result['sharedReportHash'])
+        report_hash = hashlib.sha256(json.dumps(result['reports'],sort_keys=True).encode()).hexdigest() if is_v2 else result['sharedReportHash']
+        if report_hash not in seen:
+            seen.add(report_hash)
             for k,v in prior['counts'].items():counts[k]=counts.get(k,0)+v
     receipt={'manifestId':manifest['id'],'worklistId':worklist['worklistId'],'runId':args.run_id,'volumes':len(saved),
              'uniqueReports':len(seen),'uniqueReportCounts':counts,'items':saved,'passed':True}

@@ -5,6 +5,8 @@ from . import annotation_domain as domain
 
 
 def normalize_result(source, result, run_id):
+    if isinstance(result, dict) and result.get('schemaVersion') not in (None, 'lesion-harvest.report-lesions/v1'):
+        domain.fail('UNSUPPORTED_REPORT_SCHEMA', '此校验器仅用于 legacy；case-v2 使用版本化导入入口。')
     def invalid(message): domain.fail('INVALID_REPORT_EXTRACTION', message)
     if not isinstance(source, dict) or not isinstance(result, dict): invalid('报告原文和模型结果须为对象。')
     run_id = domain.text(run_id, 200)
@@ -128,7 +130,11 @@ def normalize_result(source, result, run_id):
 
 
 def import_result(case, payload, external_key=None):
-    if case.get('reportExtraction'):
+    result = payload.get('result')
+    if isinstance(result, dict) and result.get('schemaVersion') not in (None, 'lesion-harvest.report-lesions/v1'):
+        from .report_case_v2 import import_case_v2
+        return import_case_v2(case, payload, external_key)
+    if case.get('reportExtraction') or case.get('caseV2Extraction'):
         domain.fail('REPORT_EXTRACTION_EXISTS', '此病例已有模型结果；本轮导入不覆盖已有结果或人工修改。', 409)
     report, evidence, findings, extraction = normalize_result(payload.get('reportSource'), payload.get('result'), payload.get('runId'))
     name = extraction['volumeName'].removesuffix('.nii.gz').removesuffix('.nii')
@@ -136,6 +142,7 @@ def import_result(case, payload, external_key=None):
         domain.fail('REPORT_CASE_MISMATCH', '模型报告不属于当前清单病例。')
     case['reports'].append(report); case['evidence'].extend(evidence); case['findings'].extend(findings)
     case['reportExtraction'] = extraction
+    return True
 
 
 def observation_bindings(case, ids):

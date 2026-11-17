@@ -1,3 +1,4 @@
+import { naturalCaseOrder } from './caseOrder.mjs';
 import { cancelCasePrefetch } from './casePrefetch';
 import React, { useEffect, useRef, useState } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
@@ -117,7 +118,7 @@ export default function Gateway() {
     return () => controller.abort();
   }, [view, page, refresh]);
   const switchView = value => { setView(value); setPage(0); setSearch(''); };
-  const rows = view === 'manifest' ? (manifest?.items || []).filter(r => `${r.name} ${r.image}`.toLowerCase().includes(search.toLowerCase())) : items;
+  const rows = view === 'manifest' ? naturalCaseOrder(manifest?.items || []).filter(r => `${r.name} ${r.image}`.toLowerCase().includes(search.toLowerCase())) : items;
   const shown = view === 'manifest' ? rows.slice(page * 25, page * 25 + 25) : rows;
   const count = view === 'manifest' ? rows.length : total;
   const openRow = row => run(async signal => {

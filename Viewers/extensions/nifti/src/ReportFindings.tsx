@@ -1,4 +1,5 @@
 import FindingSelectionPopover from './FindingSelectionPopover';
+import CaseV2Report from './CaseV2Report';
 import EntityName from './EntityName';
 import { entityLabel } from './entityLabels.mjs';
 import React, { useEffect, useRef, useState } from 'react';
@@ -17,6 +18,7 @@ import {
 } from 'lucide-react';
 import {
   reportSegments,
+  sourceOrderedFindings,
   assertionText,
   relationText,
   rejectionText,
@@ -86,6 +88,7 @@ export default function ReportFindings({
     else if (target.bottom > view.bottom)
       container.scrollTop += Math.min(target.bottom - view.bottom, target.top - view.top);
   };
+  const orderedFindings = context.caseV2Extraction ? sourceOrderedFindings(context) : context.findings;
   const extraction = context.reportExtraction;
   const observations = extraction?.observations || [];
   const selected = observations.find(o => o.id === selectedObservation);
@@ -129,7 +132,7 @@ export default function ReportFindings({
     );
   };
   useEffect(() => {
-    const finding = context.findings.find(f => f.id === activeFinding);
+    const finding = orderedFindings.find(f => f.id === activeFinding);
     if (!finding) return;
     setFindingsOpen(true);
     setExpandedFindingId(finding.id);
@@ -183,8 +186,8 @@ export default function ReportFindings({
     : [];
   const selectedFinding =
     selected &&
-    (context.findings.find(f => f.id === selected.findingId) ||
-      context.findings.find(f => f.id === activeFinding));
+    (orderedFindings.find(f => f.id === selected.findingId) ||
+      orderedFindings.find(f => f.id === activeFinding));
   const renderEntity = (entity, link) => (
     <div
       className="rf-entity"
@@ -347,7 +350,7 @@ export default function ReportFindings({
         )}
       </div>
     );
-  const filtered = context.findings.filter(f =>
+  const filtered = orderedFindings.filter(f =>
     `${f.text} ${f.category || ''} ${categories[f.category] || ''}`
       .toLowerCase()
       .includes(search.toLowerCase())
@@ -385,7 +388,7 @@ export default function ReportFindings({
                     {reportSegments(
                       section.text,
                       context.evidence.filter(e => e.sectionId === section.id),
-                      context.findings,
+                      orderedFindings,
                       focusedId
                     ).map(part =>
                       part.evidenceIds.length ? (
@@ -397,19 +400,19 @@ export default function ReportFindings({
                           role="button"
                           title={
                             part.findingIds
-                              .map(id => `F${context.findings.findIndex(f => f.id === id) + 1}`)
+                              .map(id => `F${orderedFindings.findIndex(f => f.id === id) + 1}`)
                               .join(' · ') || '报告提示原文'
                           }
                           onClick={() => {
                             if (!window.getSelection()?.isCollapsed) return;
-                            const f = context.findings.find(f => f.id === part.findingIds[0]);
+                            const f = orderedFindings.find(f => f.id === part.findingIds[0]);
                             if (f) selectFinding(f);
                             else focus(part.evidenceIds[0]);
                           }}
                           onKeyDown={e => {
                             if (e.key === 'Enter' || e.key === ' ') {
                               e.preventDefault();
-                              const f = context.findings.find(f => f.id === part.findingIds[0]);
+                              const f = orderedFindings.find(f => f.id === part.findingIds[0]);
                               if (f) selectFinding(f);
                               else focus(part.evidenceIds[0]);
                             }
@@ -456,7 +459,7 @@ export default function ReportFindings({
           resizeReport(values[event.key]);
         }}
       ><span /></div>}
-      <SectionHeading icon={List} title="Findings" count={context.findings.length}
+      <SectionHeading icon={List} title="Findings" count={orderedFindings.length}
         open={findingsOpen}
         onToggle={() => setFindingsOpen(!findingsOpen)} controls={`findings-list-${context.caseId}`}
         action={<>
@@ -487,7 +490,7 @@ export default function ReportFindings({
       <div className="rf-findings-body" id={`findings-list-${context.caseId}`} hidden={!findingsOpen}>
       <div className="rf-findings-scroll">
         {filtered.map(finding => {
-          const number = context.findings.indexOf(finding) + 1,
+          const number = orderedFindings.indexOf(finding) + 1,
             links = context.links.filter(l => l.findingId === finding.id);
           const hints = observations.filter(o => o.findingId === finding.id),
             open = expandedFindingId === finding.id;
@@ -590,14 +593,15 @@ export default function ReportFindings({
             </article>
           );
         })}
-        {!context.findings.length && (
+        {!orderedFindings.length && (
           <p className="rf-empty">
             没有可直接标注的 Finding。请结合原文、其他报告提示和拒绝项检查，或选取原文补充。
           </p>
         )}
-        {context.findings.length > 0 && !filtered.length && (
+        {orderedFindings.length > 0 && !filtered.length && (
           <p className="rf-empty">没有匹配的 Finding。</p>
         )}
+      <CaseV2Report context={context} onEvidence={id => focus(id)} onFinding={selectFinding} />
       {extraObservations.length > 0 && (
         <details className="rf-extra">
           <summary>其他报告提示 · {extraObservations.length}</summary>

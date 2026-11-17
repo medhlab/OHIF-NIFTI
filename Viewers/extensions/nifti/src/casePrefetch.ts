@@ -1,3 +1,4 @@
+import { naturalCaseOrder } from './caseOrder.mjs';
 import { prefetchFrames } from './prefetchPool.mjs';
 import { request, openManifestCase } from './api';
 import { annotationRequest } from './annotationClient';
@@ -23,7 +24,7 @@ export async function followingSources(workspace, sourceId, signal) {
       if (offset + page.items.length >= page.totalCases || !page.items.length) return found.filter(Boolean);
     }
   }
-  const rows = workspace.manifest?.items || [];
+  const rows = naturalCaseOrder(workspace.manifest?.items || []);
   const index = rows.findIndex(r => r.caseId === workspace.caseId);
   const ids = [];
   if (index < 0) return ids;

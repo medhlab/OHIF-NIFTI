@@ -1,0 +1,184 @@
+{
+  "schemaVersion": "lesion-harvest.case-semantics/v2",
+  "caseId": "synthetic_multi_region",
+  "volumeName": "synthetic_multi_region.nii.gz",
+  "modelName": "synthetic-fixture",
+  "reports": {
+    "findings": {
+      "text": "Cysts are present in the right kidney and left kidney. No lung nodule is seen.",
+      "sha256": "8c05b1fbb9bcdf976dd0c6c1919089d6a4c66c73124d8c0c0d3ab02b5cf23f3c"
+    },
+    "impressions": {
+      "text": "",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    }
+  },
+  "evidence": [
+    {
+      "id": "ev-9e349c8271c9e98fa44e1da2",
+      "section": "findings",
+      "start": 0,
+      "end": 54,
+      "text": "Cysts are present in the right kidney and left kidney."
+    },
+    {
+      "id": "ev-cbf7c10cf36363aea0722d0d",
+      "section": "findings",
+      "start": 25,
+      "end": 37,
+      "text": "right kidney"
+    },
+    {
+      "id": "ev-6bd2c398303b45606fbff266",
+      "section": "findings",
+      "start": 42,
+      "end": 53,
+      "text": "left kidney"
+    },
+    {
+      "id": "ev-9ea036a67abd02aa0b71af78",
+      "section": "findings",
+      "start": 55,
+      "end": 78,
+      "text": "No lung nodule is seen."
+    }
+  ],
+  "observations": [
+    {
+      "id": "obs-25858b35419e4d13ead277b4",
+      "revision": 1,
+      "rawMentionIndex": 0,
+      "observationType": "finding",
+      "concept": {
+        "text": "renal cyst",
+        "mappings": []
+      },
+      "text": "Cysts are present in the right kidney and left kidney.",
+      "sentenceEvidenceId": "ev-9e349c8271c9e98fa44e1da2",
+      "evidenceIds": [
+        "ev-9e349c8271c9e98fa44e1da2"
+      ],
+      "assertion": {
+        "value": "definite",
+        "method": "model_assertion_with_scoped_check",
+        "modelValue": "definite",
+        "evidenceIds": [
+          "ev-9e349c8271c9e98fa44e1da2"
+        ]
+      },
+      "temporal": {
+        "value": "current",
+        "provenance": "model"
+      },
+      "anatomy": [
+        {
+          "text": "right kidney",
+          "mappings": [],
+          "evidenceIds": [
+            "ev-cbf7c10cf36363aea0722d0d"
+          ],
+          "provenance": "model_with_verbatim_evidence"
+        },
+        {
+          "text": "left kidney",
+          "mappings": [],
+          "evidenceIds": [
+            "ev-6bd2c398303b45606fbff266"
+          ],
+          "provenance": "model_with_verbatim_evidence"
+        }
+      ],
+      "attributes": [],
+      "targetEligibility": {
+        "status": "candidate",
+        "imageVerified": false,
+        "scope": "report_observation_not_physical_entity"
+      }
+    },
+    {
+      "id": "obs-accc3a3330801be32c084db3",
+      "revision": 1,
+      "rawMentionIndex": 1,
+      "observationType": "finding",
+      "concept": {
+        "text": "pulmonary nodule",
+        "mappings": []
+      },
+      "text": "No lung nodule is seen.",
+      "sentenceEvidenceId": "ev-9ea036a67abd02aa0b71af78",
+      "evidenceIds": [
+        "ev-9ea036a67abd02aa0b71af78"
+      ],
+      "assertion": {
+        "value": "negated",
+        "method": "scoped_negation_cue",
+        "modelValue": "negated",
+        "evidenceIds": [
+          "ev-9ea036a67abd02aa0b71af78"
+        ]
+      },
+      "temporal": {
+        "value": "current",
+        "provenance": "model"
+      },
+      "anatomy": [],
+      "attributes": [],
+      "targetEligibility": {
+        "status": "not_target",
+        "imageVerified": false,
+        "scope": "report_observation_not_physical_entity"
+      }
+    }
+  ],
+  "relations": [],
+  "labelAssignments": [],
+  "legacyIdMap": {},
+  "legacyContext": null,
+  "rejectedMentions": [],
+  "issues": [],
+  "rawModelOutput": {
+    "mentions": [
+      {
+        "section": "findings",
+        "source_text": "Cysts are present in the right kidney and left kidney.",
+        "finding_text": "Cysts are present in the right kidney and left kidney.",
+        "observation_text": "Cysts",
+        "term": "renal cyst",
+        "observation_type": "finding",
+        "certainty": "definite",
+        "temporal": "current",
+        "anatomies": [
+          {
+            "text": "right kidney",
+            "source_text": "right kidney"
+          },
+          {
+            "text": "left kidney",
+            "source_text": "left kidney"
+          }
+        ]
+      },
+      {
+        "section": "findings",
+        "source_text": "No lung nodule is seen.",
+        "finding_text": "No lung nodule is seen.",
+        "observation_text": "lung nodule",
+        "term": "pulmonary nodule",
+        "certainty": "negated",
+        "temporal": "current",
+        "anatomies": []
+      }
+    ]
+  },
+  "provenance": {
+    "mode": "model_extraction",
+    "inputSha256": null,
+    "coverage": "not_validated",
+    "identityPolicy": "evidence_occurrence_allocation_no_cross_run_reconciliation"
+  },
+  "counts": {
+    "observations": 2,
+    "rejectedMentions": 0,
+    "targetCandidates": 1
+  }
+}

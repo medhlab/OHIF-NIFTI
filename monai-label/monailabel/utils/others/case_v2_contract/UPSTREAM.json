@@ -1,0 +1,14 @@
+{
+  "source": "lesion_harvest/pipeline",
+  "snapshot": "2026-10-16",
+  "changes": "package-relative imports only; no correction ledgers are bundled or applied",
+  "sha256": {
+    "case_contract.py": "0f608700971472017b1ed27b619b4bc7ba5b9b3ad68c8eaae19e96bcd6d2a4d6",
+    "case_temporal.py": "b8a9eae8d19dee2566bc09cb3549d517187ffa5156691138fae45ba74c52984e",
+    "reviewed_temporal.py": "993cbfc1c616e153ce2f4284456e5cd99df8a779301c34c3c33469fb335298b2",
+    "case_semantic_details.py": "bbe878b5b9b99706dfc98c1fde2e201edcdf366bc122f558885d64a95c4903a6",
+    "ontology_projection_contract.py": "ff45b4564c4a2ba337298d29dd23be395537521ae47b56ff88abf20f456db743",
+    "report_alignment.py": "a43881f183a5e4f9893578298b0d1c76fe659495b54aada11bb2ca3762c3f20e",
+    "studio_contract.py": "ecfc8707aad74c410dd23475c2258f874afb9b5c54e299d3939e94dbdeef9256"
+  }
+}

@@ -1,3 +1,4 @@
+import { naturalCaseOrder } from './caseOrder.mjs';
 import { maskId } from './packedMasks';
 import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
@@ -81,7 +82,7 @@ export default function CaseFilesPanel() {
     }
   };
   const rows =
-    manifest?.items ||
+    (manifest?.items ? naturalCaseOrder(manifest.items) : null) ||
     (source
       ? [
           {
